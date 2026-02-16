@@ -1,0 +1,1 @@
+{"version":3,"file":"speed-checker.js","sourceRoot":"","sources":["../../../src/tools/tier1/speed-checker.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,UAAU,EAAE,MAAM,iBAAiB,CAAC;AAG7C,MAAM,CAAC,KAAK,UAAU,kBAAkB,CACtC,GAAW,EACX,QAAiB;IAEjB,MAAM,aAAa,GACjB,QAAQ,KAAK,SAAS,CAAC,CAAC,CAAC,SAAS,CAAC,CAAC,CAAC,QAAQ,CAAC;IAChD,OAAO,UAAU,CAAC,GAAG,EAAE,aAAa,CAAC,CAAC;AACxC,CAAC"}

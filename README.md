@@ -4,7 +4,9 @@ MCP Server for [ZERONOVA LAB](https://zeronova-lab.com) tools — SEO audit, lin
 
 ## Features
 
-6 tools for web page analysis:
+### Tier 1: Individual Tools (6 tools)
+
+Single-purpose API wrappers for web page analysis:
 
 | Tool | Description |
 |------|-------------|
@@ -14,6 +16,22 @@ MCP Server for [ZERONOVA LAB](https://zeronova-lab.com) tools — SEO audit, lin
 | `check_ogp` | Check OGP and Twitter Card meta tags |
 | `extract_headings` | Extract H1-H6 heading hierarchy |
 | `check_x_card` | Check X (Twitter) Card settings and validation |
+
+### Tier 2: Workflow Tools (3 tools)
+
+"Workflow as a Tool" — chain multiple Tier 1 tools in a single call for comprehensive audits:
+
+| Tool | Description |
+|------|-------------|
+| `run_seo_audit` | Comprehensive SEO audit with scoring (0-100). Chains OGP, heading, link, speed, and alt checks into a unified report. |
+| `run_web_launch_audit` | Pre-launch quality audit. SEO, performance, link integrity, accessibility, and branding checks. |
+| `run_freelance_delivery_audit` | Pre-delivery audit for freelance projects. Quality, SEO, and manual checklist items. |
+
+**Workflow features:**
+- Checklist-driven evaluation with weighted scoring (pass = full weight, warn = half, fail = 0)
+- Partial failure resilience — individual tool failures don't stop the workflow
+- Progress reporting via MCP `notifications/progress` protocol
+- Manual check items for non-automatable verification (robots.txt, JSON-LD, contrast, etc.)
 
 ## Installation
 
@@ -60,7 +78,9 @@ zeronova-lab-mcp
 
 ## Tool Details
 
-### check_alt_attributes
+### Tier 1 Tools
+
+#### check_alt_attributes
 
 Check alt attributes of all images on a webpage.
 
@@ -69,7 +89,7 @@ Check alt attributes of all images on a webpage.
 
 **Returns:** List of images with alt attribute status (present/empty/missing/decorative) and summary counts.
 
-### check_links
+#### check_links
 
 Check all links on a webpage for broken URLs.
 
@@ -78,7 +98,7 @@ Check all links on a webpage for broken URLs.
 
 **Returns:** List of links with HTTP status codes, external/internal classification, and warnings for known blocking domains.
 
-### check_page_speed
+#### check_page_speed
 
 Analyze webpage performance using Google PageSpeed Insights.
 
@@ -88,7 +108,7 @@ Analyze webpage performance using Google PageSpeed Insights.
 
 **Returns:** Performance score (0-100), Core Web Vitals (FCP, LCP, TBT, CLS, SI, TTI), and top optimization opportunities.
 
-### check_ogp
+#### check_ogp
 
 Check Open Graph Protocol and Twitter Card meta tags.
 
@@ -97,7 +117,7 @@ Check Open Graph Protocol and Twitter Card meta tags.
 
 **Returns:** OGP data (title, description, image, url, type, siteName) and Twitter Card data with fallback chain resolution.
 
-### extract_headings
+#### extract_headings
 
 Extract all headings (H1-H6) from a webpage.
 
@@ -106,7 +126,7 @@ Extract all headings (H1-H6) from a webpage.
 
 **Returns:** Heading hierarchy with level and text for each heading.
 
-### check_x_card
+#### check_x_card
 
 Check X (Twitter) Card settings for a webpage.
 
@@ -114,6 +134,44 @@ Check X (Twitter) Card settings for a webpage.
 - `url` (required): Target webpage URL
 
 **Returns:** Card data, validation results with specific issues, and OGP fallback values.
+
+### Tier 2 Tools
+
+#### run_seo_audit
+
+Comprehensive SEO audit that chains multiple checks into a unified report with scoring.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** Audit report with:
+- Checklist results (16 items): OGP title/description/image, H1 uniqueness, heading hierarchy, broken links, page speed, alt attributes, and more
+- Weighted score (0-100)
+- Manual check items: robots.txt, JSON-LD, mobile-friendly, canonical URL
+
+#### run_web_launch_audit
+
+Pre-launch quality audit for websites about to go live.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** Audit report with:
+- Checklist results (18 items): All SEO checks plus X Card, favicons, error pages, branding consistency
+- Weighted score (0-100)
+- Manual check items: favicon, 404 page, form validation, analytics, contrast ratio
+
+#### run_freelance_delivery_audit
+
+Pre-delivery audit for freelance web projects.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** Audit report with:
+- Checklist results (13 items): Core SEO, alt attributes, page speed, broken links
+- Weighted score (0-100)
+- Manual check items: cross-browser testing, copyright year, SSL, contact form
 
 ## Configuration
 

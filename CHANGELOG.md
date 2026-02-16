@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-16
+
+### Added
+
+- 3 Tier 2 workflow tools ("Workflow as a Tool" — chain multiple Tier 1 tools in a single call):
+  - `run_seo_audit` — Comprehensive SEO audit: chains OGP, heading, link, speed, and alt checks into a unified report with scoring (0-100)
+  - `run_web_launch_audit` — Pre-launch quality audit: SEO, performance, link integrity, accessibility, branding checks
+  - `run_freelance_delivery_audit` — Pre-delivery audit for freelance projects: quality, SEO, and manual checklist items
+- Checklist-driven evaluation: each workflow defines checklist items with auto-verifiable evaluation functions
+- Weighted scoring: pass = full weight, warn = half weight, fail = 0
+- Partial failure resilience: individual tool failures do not stop the workflow (reported as "error" status)
+- Workflow timeout: 60-second limit enforced via `Promise.race` during tool execution
+- Manual check items: non-automatable items (robots.txt, JSON-LD, contrast, etc.) listed as "manual" for human/AI review
+- Progress reporting via MCP SDK `notifications/progress` protocol (with stderr fallback)
+- Score calculation excludes error items from maxScore ("未評価" — unevaluated items)
+- New types: `AuditReport`, `CheckItemDefinition`, `CheckItemResult`, `CollectedToolResults`, etc.
+
 ## [0.1.0] - 2026-02-16
 
 ### Added

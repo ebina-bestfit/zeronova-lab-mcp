@@ -100,3 +100,66 @@ export interface HeadingExtractorResponse {
 export interface ApiErrorResponse {
   error: string;
 }
+
+// ---- Tier 2: Workflow types ----
+
+export type CheckStatus =
+  | "pass"
+  | "warn"
+  | "fail"
+  | "error"
+  | "skipped"
+  | "manual";
+
+export type Tier1ToolName = "ogp" | "headings" | "links" | "speed" | "alt";
+
+export interface CollectedToolResults {
+  ogp: { data: OgpCheckerResponse } | { error: string } | null;
+  headings: { data: HeadingExtractorResponse } | { error: string } | null;
+  links: { data: LinkCheckerResponse } | { error: string } | null;
+  speed: { data: SpeedCheckerResponse } | { error: string } | null;
+  alt: { data: AltCheckerResponse } | { error: string } | null;
+}
+
+export interface CheckItemDefinition {
+  id: string;
+  category: string;
+  label: string;
+  weight: number;
+  autoVerifiable: boolean;
+  tier1Tool?: Tier1ToolName;
+  evaluate?: (results: CollectedToolResults) => {
+    status: CheckStatus;
+    detail?: string;
+  };
+}
+
+export interface CheckItemResult {
+  id: string;
+  category: string;
+  label: string;
+  status: CheckStatus;
+  detail?: string;
+}
+
+export interface ToolResultSummary {
+  status: CheckStatus;
+  details: Record<string, unknown>;
+}
+
+export interface AuditReport {
+  url: string;
+  auditType: string;
+  score: number;
+  summary: string;
+  results: Record<string, ToolResultSummary>;
+  checklist: {
+    total: number;
+    passed: number;
+    warned: number;
+    failed: number;
+    errors: number;
+    manual: number;
+    items: CheckItemResult[];
+  };
+}

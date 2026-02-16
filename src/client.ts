@@ -20,7 +20,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const RETRY_DELAY_MS = 2_000;
 
 // Checklist 2-B: User-Agent format = ZeronovaLabMCP/{version}
-const USER_AGENT = "ZeronovaLabMCP/0.1.0";
+const USER_AGENT = "ZeronovaLabMCP/0.2.0";
 
 export class ApiError extends Error {
   constructor(
