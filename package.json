@@ -1,0 +1,54 @@
+{
+  "name": "zeronova-lab-mcp",
+  "version": "0.1.0",
+  "description": "MCP Server for ZERONOVA LAB tools — SEO audit, link checking, OGP validation, and more for AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "zeronova-lab-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "seo",
+    "web-tools",
+    "ai-agent",
+    "claude",
+    "ogp",
+    "link-checker",
+    "accessibility"
+  ],
+  "author": "Zeronova",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ebina-bestfit/zeronova-lab-mcp"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
