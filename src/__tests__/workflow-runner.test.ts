@@ -515,6 +515,107 @@ describe("runWorkflow", () => {
     expect(manualItems.length).toBeGreaterThan(0);
   });
 
+  it("distinguishes bot-blocked links (403 with warning) from truly broken links", async () => {
+    mockCheckOgp.mockResolvedValue(makeOgpResponse());
+    mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
+    mockCheckLinks.mockResolvedValue(
+      makeLinksResponse({
+        links: [
+          {
+            url: "https://example.com/about",
+            text: "About",
+            status: 200,
+            statusText: "OK",
+            isExternal: false,
+          },
+          {
+            url: "https://x.com/user",
+            text: "X Profile",
+            status: 403,
+            statusText: "Forbidden",
+            isExternal: true,
+            warning:
+              "このサイトはサーバーからのアクセスをブロックするため、ブラウザで直接確認してください",
+          },
+        ],
+        totalLinks: 2,
+      }),
+    );
+    mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
+    mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "seo-audit",
+      seoAuditChecklist,
+    );
+
+    // Bot-blocked links should result in "warn", not "fail"
+    const linkItem = report.checklist.items.find(
+      (i) => i.id === "seo-no-broken-links",
+    );
+    expect(linkItem?.status).toBe("warn");
+    expect(linkItem?.detail).toContain("ボットブロック");
+    expect(linkItem?.detail).toContain("x.com");
+
+    // Link result summary should also be "warn"
+    expect(report.results["links"]?.status).toBe("warn");
+  });
+
+  it("reports fail only for truly broken links, warn for bot-blocked", async () => {
+    mockCheckOgp.mockResolvedValue(makeOgpResponse());
+    mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
+    mockCheckLinks.mockResolvedValue(
+      makeLinksResponse({
+        links: [
+          {
+            url: "https://example.com/about",
+            text: "About",
+            status: 200,
+            statusText: "OK",
+            isExternal: false,
+          },
+          {
+            url: "https://example.com/missing",
+            text: "Missing Page",
+            status: 404,
+            statusText: "Not Found",
+            isExternal: false,
+          },
+          {
+            url: "https://x.com/user",
+            text: "X Profile",
+            status: 403,
+            statusText: "Forbidden",
+            isExternal: true,
+            warning:
+              "このサイトはサーバーからのアクセスをブロックするため、ブラウザで直接確認してください",
+          },
+        ],
+        totalLinks: 3,
+      }),
+    );
+    mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
+    mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "seo-audit",
+      seoAuditChecklist,
+    );
+
+    // Truly broken link should result in "fail"
+    const linkItem = report.checklist.items.find(
+      (i) => i.id === "seo-no-broken-links",
+    );
+    expect(linkItem?.status).toBe("fail");
+    expect(linkItem?.detail).toContain("1件のリンク切れ");
+    expect(linkItem?.detail).toContain("missing");
+    expect(linkItem?.detail).toContain("404");
+    // Should also mention bot-blocked
+    expect(linkItem?.detail).toContain("ボットブロック");
+  });
+
   it("calls sendProgress for MCP progress notification", async () => {
     setupAllMocksSuccess();
     const sendProgress = vi.fn<

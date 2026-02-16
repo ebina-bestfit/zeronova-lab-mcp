@@ -10,6 +10,9 @@ import { handleSpeedChecker } from "./tools/tier1/speed-checker.js";
 import { handleOgpChecker } from "./tools/tier1/ogp-checker.js";
 import { handleHeadingExtractor } from "./tools/tier1/heading-extractor.js";
 import { handleXCardPreview } from "./tools/tier1/x-card-preview.js";
+import { handleSeoAudit } from "./tools/tier2/seo-audit.js";
+import { handleWebLaunchAudit } from "./tools/tier2/web-launch-audit.js";
+import { handleFreelanceDeliveryAudit } from "./tools/tier2/freelance-delivery-audit.js";
 const rateLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000 });
 const MAX_URL_LENGTH = 2048;
 /**
@@ -77,7 +80,7 @@ function formatError(error) {
 }
 const server = new McpServer({
     name: "zeronova-lab",
-    version: "0.1.0",
+    version: "0.2.0",
 });
 // Zod schemas with maxLength constraint (mcp-dev-checklist section 2-A)
 const urlSchema = {
@@ -187,6 +190,104 @@ server.tool("check_x_card", "Check X (Twitter) Card settings for a webpage. Veri
         const validUrl = validateUrl(url);
         checkRateLimit("check_x_card");
         const result = await handleXCardPreview(validUrl);
+        return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+    }
+    catch (error) {
+        return {
+            content: [{ type: "text", text: formatError(error) }],
+            isError: true,
+        };
+    }
+});
+// ---- Tier 2: Workflow tools ----
+/**
+ * Build MCP SDK progress notification sender from tool callback extra.
+ * Checklist 2-C: MCP SDK progress notification.
+ * Falls back to undefined if client does not support progress (no progressToken).
+ *
+ * Uses a generic sendFn to avoid coupling with ServerNotification union type.
+ */
+function buildSendProgress(progressToken, sendFn) {
+    if (progressToken == null)
+        return undefined;
+    return async (progress, total, message) => {
+        try {
+            await sendFn("notifications/progress", progressToken, progress, total, message);
+        }
+        catch {
+            // Progress notification failure is non-fatal
+        }
+    };
+}
+// Tier 2: run_seo_audit
+server.tool("run_seo_audit", "Run a comprehensive SEO audit on a webpage. Internally chains 5 tools (OGP checker, heading extractor, link checker, page speed, alt checker) and returns a unified report with a score (0-100), per-item pass/warn/fail status, and improvement suggestions. Manual-check items (robots.txt, sitemap, JSON-LD) are listed separately.", urlSchema, async ({ url }, extra) => {
+    try {
+        const validUrl = validateUrl(url);
+        checkRateLimit("run_seo_audit");
+        const onProgress = (message) => {
+            process.stderr.write(`[seo-audit] ${message}\n`);
+        };
+        const sendProgress = buildSendProgress(extra._meta?.progressToken, async (_method, pt, progress, total, message) => {
+            await extra.sendNotification({
+                method: "notifications/progress",
+                params: { progressToken: pt, progress, total, message },
+            });
+        });
+        const result = await handleSeoAudit(validUrl, onProgress, sendProgress);
+        return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+    }
+    catch (error) {
+        return {
+            content: [{ type: "text", text: formatError(error) }],
+            isError: true,
+        };
+    }
+});
+// Tier 2: run_web_launch_audit
+server.tool("run_web_launch_audit", "Run a pre-launch quality audit on a webpage. Checks SEO settings, performance (Core Web Vitals), link integrity, alt attributes, and OGP/Twitter Card configuration. Returns a score (0-100) with per-item results. Also lists manual-check items for branding, accessibility, and security.", urlSchema, async ({ url }, extra) => {
+    try {
+        const validUrl = validateUrl(url);
+        checkRateLimit("run_web_launch_audit");
+        const onProgress = (message) => {
+            process.stderr.write(`[web-launch-audit] ${message}\n`);
+        };
+        const sendProgress = buildSendProgress(extra._meta?.progressToken, async (_method, pt, progress, total, message) => {
+            await extra.sendNotification({
+                method: "notifications/progress",
+                params: { progressToken: pt, progress, total, message },
+            });
+        });
+        const result = await handleWebLaunchAudit(validUrl, onProgress, sendProgress);
+        return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+    }
+    catch (error) {
+        return {
+            content: [{ type: "text", text: formatError(error) }],
+            isError: true,
+        };
+    }
+});
+// Tier 2: run_freelance_delivery_audit
+server.tool("run_freelance_delivery_audit", "Run a pre-delivery quality audit for freelance web projects. Checks link integrity, page speed, alt attributes, meta tags, and OGP configuration. Returns a score (0-100) with per-item results. Also lists manual-check items for contrast, proofreading, invoicing, and security.", urlSchema, async ({ url }, extra) => {
+    try {
+        const validUrl = validateUrl(url);
+        checkRateLimit("run_freelance_delivery_audit");
+        const onProgress = (message) => {
+            process.stderr.write(`[freelance-delivery-audit] ${message}\n`);
+        };
+        const sendProgress = buildSendProgress(extra._meta?.progressToken, async (_method, pt, progress, total, message) => {
+            await extra.sendNotification({
+                method: "notifications/progress",
+                params: { progressToken: pt, progress, total, message },
+            });
+        });
+        const result = await handleFreelanceDeliveryAudit(validUrl, onProgress, sendProgress);
         return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

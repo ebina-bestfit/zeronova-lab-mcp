@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-02-16
+
+### Fixed
+
+- Workflow output information parity: `buildToolResultSummary()` now includes all fields from site-side tools (OGP title/description/image/type/siteName, Speed 6 metrics + top 5 opportunities, Alt missing image URLs up to 10, Headings full list + hierarchy skip info, Links text + internal/external classification)
+- Checklist evaluation details now include actual data (real title/description text, image URLs, top improvement suggestions)
+- Link check evaluation now distinguishes bot-blocked (403) from true broken links using the API's `warning` field — bot-blocked URLs are reported as "warn" instead of "fail"
+- Added tests for bot-blocked only and mixed (broken + bot-blocked) scenarios
+
 ## [0.2.0] - 2026-02-16
 
 ### Added
