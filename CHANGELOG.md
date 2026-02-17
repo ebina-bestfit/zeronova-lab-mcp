@@ -5,7 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-02-17
+
+### Fixed
+
+- SSRF: site-config-checker API route changed from `redirect: "follow"` to `redirect: "manual"` with per-hop `isValidUrl()` validation
+- OGP result summary now includes `canonical` URL and `jsonLd` items (type + validity) in `buildToolResultSummary()`
+- Site config result summary now includes `robots.content` (actual robots.txt text) in `buildToolResultSummary()`
+- McpServer version and User-Agent now match package.json (`0.2.2`)
+- Tool descriptions updated: `check_ogp` mentions canonical/JSON-LD, `run_web_launch_audit` mentions 6 tools
+- JSDoc corrected: seo-audit handler documents 6 Tier 1 tools (was 5)
+- README.md updated: Tier 1 tool count (6→7), `check_site_config` added, Tier 2 auto/manual item counts corrected
+
 ## [0.2.1] - 2026-02-16
+
+### Added
+
+- New Tier 1 tool: `check_site_config` — checks robots.txt syntax/rules and XML sitemap structure/URL count for a website
+- OGP checker (`check_ogp`) now returns `canonical` URL and `jsonLd` structured data items
+- 7 SEO audit checklist items converted from manual to auto-verified:
+  - canonical URL (via OGP checker)
+  - JSON-LD structured data (via OGP checker)
+  - robots.txt validation (via site config checker)
+  - XML sitemap validation (via site config checker)
+  - robots.txt in web-launch-audit
+  - sitemap in web-launch-audit
+  - JSON-LD in web-launch-audit
+- SEO audit now runs 6 Tier 1 tools (was 5) — all 16 checklist items are auto-verified (0 manual)
+- Web launch audit now runs 6 Tier 1 tools — 14 auto-verified + 4 manual items
 
 ### Fixed
 
@@ -26,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Weighted scoring: pass = full weight, warn = half weight, fail = 0
 - Partial failure resilience: individual tool failures do not stop the workflow (reported as "error" status)
 - Workflow timeout: 60-second limit enforced via `Promise.race` during tool execution
-- Manual check items: non-automatable items (robots.txt, JSON-LD, contrast, etc.) listed as "manual" for human/AI review
+- Manual check items: non-automatable items (contrast, favicon, etc.) listed as "manual" for human/AI review
 - Progress reporting via MCP SDK `notifications/progress` protocol (with stderr fallback)
 - Score calculation excludes error items from maxScore ("未評価" — unevaluated items)
 - New types: `AuditReport`, `CheckItemDefinition`, `CheckItemResult`, `CollectedToolResults`, etc.

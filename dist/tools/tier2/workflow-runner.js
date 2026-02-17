@@ -55,7 +55,8 @@ function buildToolResultSummary(tool, result) {
     if ("error" in result) {
         return { status: "error", details: { error: result.error } };
     }
-    // Build details based on tool type
+    // Build details preserving as much Tier 1 tool data as possible.
+    // The workflow report should NOT degrade information from the site API.
     switch (tool) {
         case "ogp": {
             const d = result.data;
@@ -67,27 +68,48 @@ function buildToolResultSummary(tool, result) {
             return {
                 status: allGood ? "pass" : hasTitle ? "warn" : "fail",
                 details: {
-                    title: d.ogp.title
-                        ? `✓ 設定済み（${d.ogp.title.length}文字）`
-                        : "✗ 未設定",
-                    description: d.ogp.description
-                        ? `✓ 設定済み（${d.ogp.description.length}文字）`
-                        : "✗ 未設定",
-                    image: d.ogp.image ? "✓ 設定済み" : "✗ 未設定",
-                    twitterCard: d.twitter.card
-                        ? `✓ ${d.twitter.card}`
-                        : "✗ 未設定",
+                    ogp: {
+                        title: d.ogp.title || null,
+                        titleLength: d.ogp.title ? d.ogp.title.length : 0,
+                        description: d.ogp.description || null,
+                        descriptionLength: d.ogp.description ? d.ogp.description.length : 0,
+                        image: d.ogp.image || null,
+                        url: d.ogp.url || null,
+                        type: d.ogp.type || null,
+                        siteName: d.ogp.siteName || null,
+                    },
+                    twitter: {
+                        card: d.twitter.card || null,
+                        title: d.twitter.title || null,
+                        description: d.twitter.description || null,
+                        image: d.twitter.image || null,
+                    },
                 },
             };
         }
         case "headings": {
             const d = result.data;
             const h1Count = d.headings.filter((h) => h.level === 1).length;
+            // Check for hierarchy skips
+            let prevLevel = 0;
+            const hierarchyIssues = [];
+            for (const h of d.headings) {
+                if (h.level > prevLevel + 1 && prevLevel > 0) {
+                    hierarchyIssues.push(`H${prevLevel}→H${h.level}`);
+                }
+                prevLevel = h.level;
+            }
             return {
-                status: h1Count === 1 ? "pass" : h1Count === 0 ? "fail" : "warn",
+                status: h1Count === 1 && hierarchyIssues.length === 0
+                    ? "pass"
+                    : h1Count === 0
+                        ? "fail"
+                        : "warn",
                 details: {
                     h1Count,
                     totalHeadings: d.headings.length,
+                    headings: d.headings,
+                    ...(hierarchyIssues.length > 0 ? { hierarchyIssues } : {}),
                     issue: h1Count === 0
                         ? "H1タグがありません"
                         : h1Count > 1
@@ -98,12 +120,34 @@ function buildToolResultSummary(tool, result) {
         }
         case "links": {
             const d = result.data;
-            const broken = d.links.filter((l) => l.status >= 400).length;
+            const trulyBroken = d.links.filter((l) => l.status >= 400 && !l.warning);
+            const botBlocked = d.links.filter((l) => l.status >= 400 && !!l.warning);
+            const brokenUrls = trulyBroken.slice(0, 5).map((l) => ({
+                url: l.url,
+                text: l.text,
+                status: l.status,
+                statusText: l.statusText,
+                isExternal: l.isExternal,
+            }));
+            const blockedUrls = botBlocked.slice(0, 3).map((l) => ({
+                url: l.url,
+                text: l.text,
+                status: l.status,
+                warning: l.warning,
+            }));
+            const status = trulyBroken.length > 0
+                ? "fail"
+                : botBlocked.length > 0
+                    ? "warn"
+                    : "pass";
             return {
-                status: broken === 0 ? "pass" : "fail",
+                status,
                 details: {
                     total: d.totalLinks,
-                    broken,
+                    broken: trulyBroken.length,
+                    botBlocked: botBlocked.length,
+                    ...(brokenUrls.length > 0 ? { brokenUrls } : {}),
+                    ...(blockedUrls.length > 0 ? { blockedUrls } : {}),
                 },
             };
         }
@@ -127,14 +171,33 @@ function buildToolResultSummary(tool, result) {
                         : "fail",
                 details: {
                     performanceScore: d.performanceScore,
-                    lcp: lcpSec,
-                    cls: clsVal,
-                    issue: issues.length > 0 ? issues.join(", ") : undefined,
+                    strategy: d.strategy,
+                    metrics: {
+                        fcp: { value: d.metrics.fcp.displayValue, score: d.metrics.fcp.score },
+                        lcp: { value: d.metrics.lcp.displayValue, score: d.metrics.lcp.score },
+                        tbt: { value: d.metrics.tbt.displayValue, score: d.metrics.tbt.score },
+                        cls: { value: d.metrics.cls.displayValue, score: d.metrics.cls.score },
+                        si: { value: d.metrics.si.displayValue, score: d.metrics.si.score },
+                        tti: { value: d.metrics.tti.displayValue, score: d.metrics.tti.score },
+                    },
+                    ...(d.opportunities.length > 0
+                        ? { opportunities: d.opportunities.slice(0, 5) }
+                        : {}),
+                    ...(issues.length > 0 ? { issue: issues.join(", ") } : {}),
                 },
             };
         }
         case "alt": {
             const d = result.data;
+            // Include URLs of images with missing/empty alt for actionable feedback
+            const missingAltImages = d.images
+                .filter((img) => img.context === "missing" || img.context === "empty")
+                .slice(0, 10)
+                .map((img) => ({
+                src: img.src,
+                context: img.context,
+                ...(img.alt !== null ? { alt: img.alt } : {}),
+            }));
             return {
                 status: d.summary.total === 0 || d.summary.missingAlt === 0
                     ? "pass"
@@ -144,6 +207,8 @@ function buildToolResultSummary(tool, result) {
                     withAlt: d.summary.withAlt,
                     missingAlt: d.summary.missingAlt,
                     emptyAlt: d.summary.emptyAlt,
+                    decorative: d.summary.decorative,
+                    ...(missingAltImages.length > 0 ? { missingAltImages } : {}),
                 },
             };
         }

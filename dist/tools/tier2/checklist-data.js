@@ -41,11 +41,12 @@ function evalMetaTitle(results) {
     if (!title)
         return { status: "fail", detail: "タイトルタグが未設定" };
     const len = title.length;
+    const titlePreview = title.length > 60 ? title.slice(0, 57) + "..." : title;
     if (len >= 30 && len <= 60)
-        return { status: "pass", detail: `${len}文字（適切）` };
+        return { status: "pass", detail: `"${titlePreview}"（${len}文字、適切）` };
     if (len < 30)
-        return { status: "warn", detail: `${len}文字（短い。推奨: 30〜60文字）` };
-    return { status: "warn", detail: `${len}文字（長い。推奨: 30〜60文字）` };
+        return { status: "warn", detail: `"${titlePreview}"（${len}文字、短い。推奨: 30〜60文字）` };
+    return { status: "warn", detail: `"${titlePreview}"（${len}文字、長い。推奨: 30〜60文字）` };
 }
 function evalMetaDescription(results) {
     const ogp = getOgpData(results);
@@ -55,16 +56,17 @@ function evalMetaDescription(results) {
     if (!desc)
         return { status: "fail", detail: "メタディスクリプションが未設定" };
     const len = desc.length;
+    const descPreview = desc.length > 80 ? desc.slice(0, 77) + "..." : desc;
     if (len >= 80 && len <= 160)
-        return { status: "pass", detail: `${len}文字（適切）` };
+        return { status: "pass", detail: `"${descPreview}"（${len}文字、適切）` };
     if (len < 80)
         return {
             status: "warn",
-            detail: `${len}文字（短い。推奨: 80〜160文字）`,
+            detail: `"${descPreview}"（${len}文字、短い。推奨: 80〜160文字）`,
         };
     return {
         status: "warn",
-        detail: `${len}文字（長い。推奨: 80〜160文字）`,
+        detail: `"${descPreview}"（${len}文字、長い。推奨: 80〜160文字）`,
     };
 }
 function evalOgpImage(results) {
@@ -72,7 +74,7 @@ function evalOgpImage(results) {
     if (!ogp)
         return toolError("OGPチェッカー");
     if (ogp.ogp.image)
-        return { status: "pass", detail: "OGP画像が設定済み" };
+        return { status: "pass", detail: `OGP画像が設定済み: ${ogp.ogp.image}` };
     return { status: "fail", detail: "OGP画像が未設定" };
 }
 function evalTwitterCard(results) {
@@ -90,8 +92,9 @@ function evalTwitterImage(results) {
     const ogp = getOgpData(results);
     if (!ogp)
         return toolError("OGPチェッカー");
-    if (ogp.twitter.image || ogp.ogp.image)
-        return { status: "pass", detail: "Twitter Card画像が設定済み" };
+    const imgUrl = ogp.twitter.image || ogp.ogp.image;
+    if (imgUrl)
+        return { status: "pass", detail: `Twitter Card画像が設定済み: ${imgUrl}` };
     return { status: "fail", detail: "Twitter Card画像が未設定" };
 }
 function evalH1Unique(results) {
@@ -143,24 +146,59 @@ function evalAltAttributes(results) {
             status: "pass",
             detail: `全${alt.summary.total}画像にalt設定済み`,
         };
+    // Include specific image URLs that are missing alt for actionable feedback
+    const missingImages = alt.images
+        .filter((img) => img.context === "missing")
+        .slice(0, 3)
+        .map((img) => img.src);
+    const missingInfo = missingImages.length > 0
+        ? `: ${missingImages.join("、")}${alt.summary.missingAlt > 3 ? ` 他${alt.summary.missingAlt - 3}件` : ""}`
+        : "";
     return {
         status: "fail",
-        detail: `${alt.summary.missingAlt}件のalt未設定（全${alt.summary.total}画像中）`,
+        detail: `${alt.summary.missingAlt}件のalt未設定（全${alt.summary.total}画像中）${missingInfo}`,
     };
 }
 function evalNoBrokenLinks(results) {
     const links = getLinksData(results);
     if (!links)
         return toolError("リンク切れチェッカー");
-    const brokenLinks = links.links.filter((l) => l.status >= 400);
-    if (brokenLinks.length === 0)
+    // Distinguish truly broken links from bot-blocked domains (e.g. X/Twitter 403)
+    // Site API sets `warning` field for known blocked domains (x.com, twitter.com, etc.)
+    const trulyBroken = links.links.filter((l) => l.status >= 400 && !l.warning);
+    const botBlocked = links.links.filter((l) => l.status >= 400 && !!l.warning);
+    if (trulyBroken.length === 0 && botBlocked.length === 0) {
         return {
             status: "pass",
             detail: `${links.totalLinks}リンク全て正常`,
         };
+    }
+    // Build detail with specific URLs
+    const parts = [];
+    if (trulyBroken.length > 0) {
+        const urls = trulyBroken
+            .slice(0, 3)
+            .map((l) => `${l.url}（${l.status}）`)
+            .join("、");
+        parts.push(`${trulyBroken.length}件のリンク切れ: ${urls}${trulyBroken.length > 3 ? ` 他${trulyBroken.length - 3}件` : ""}`);
+    }
+    if (botBlocked.length > 0) {
+        const urls = botBlocked
+            .slice(0, 2)
+            .map((l) => l.url)
+            .join("、");
+        parts.push(`${botBlocked.length}件はボットブロック（${urls}）— ブラウザで直接確認してください`);
+    }
+    // Only truly broken links are "fail"; bot-blocked only is "warn"
+    if (trulyBroken.length > 0) {
+        return {
+            status: "fail",
+            detail: parts.join("。") + `（全${links.totalLinks}リンク中）`,
+        };
+    }
     return {
-        status: "fail",
-        detail: `${brokenLinks.length}件のリンク切れ（全${links.totalLinks}リンク中）`,
+        status: "warn",
+        detail: parts.join("。") + `（全${links.totalLinks}リンク中）`,
     };
 }
 function evalPerformanceScore(results) {
@@ -168,11 +206,15 @@ function evalPerformanceScore(results) {
     if (!speed)
         return toolError("ページ速度チェッカー");
     const score = speed.performanceScore;
+    // Include top opportunity for actionable feedback
+    const topOpportunity = speed.opportunities.length > 0
+        ? `。改善提案: ${speed.opportunities[0].title}（${speed.opportunities[0].savings}）`
+        : "";
     if (score >= 90)
         return { status: "pass", detail: `${score}点（優秀）` };
     if (score >= 50)
-        return { status: "warn", detail: `${score}点（改善余地あり）` };
-    return { status: "fail", detail: `${score}点（要改善、50点未満）` };
+        return { status: "warn", detail: `${score}点（改善余地あり）${topOpportunity}` };
+    return { status: "fail", detail: `${score}点（要改善、50点未満）${topOpportunity}` };
 }
 function evalLCP(results) {
     const speed = getSpeedData(results);
@@ -214,8 +256,10 @@ function evalMetaTitleExists(results) {
     const ogp = getOgpData(results);
     if (!ogp)
         return toolError("OGPチェッカー");
-    if (ogp.ogp.title)
-        return { status: "pass", detail: `タイトル設定済み（${ogp.ogp.title.length}文字）` };
+    if (ogp.ogp.title) {
+        const titlePreview = ogp.ogp.title.length > 60 ? ogp.ogp.title.slice(0, 57) + "..." : ogp.ogp.title;
+        return { status: "pass", detail: `"${titlePreview}"（${ogp.ogp.title.length}文字）` };
+    }
     return { status: "fail", detail: "タイトルタグが未設定" };
 }
 function evalH1Exists(results) {

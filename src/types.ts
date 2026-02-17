@@ -65,7 +65,13 @@ export interface SpeedCheckerResponse {
   fetchedAt: string;
 }
 
-// Tier 1: ogp-checker response
+// Tier 1: ogp-checker response (extended with canonical + JSON-LD in Phase 2.5)
+export interface JsonLdItem {
+  type: string;
+  valid: boolean;
+  raw: string;
+}
+
 export interface OgpCheckerResponse {
   ogp: {
     title: string;
@@ -81,7 +87,34 @@ export interface OgpCheckerResponse {
     description: string;
     image: string;
   };
+  canonical: string;
+  jsonLd: JsonLdItem[];
   rawUrl: string;
+}
+
+// Tier 1: site-config-checker response (Phase 2.5)
+export interface SiteConfigRobotsResult {
+  exists: boolean;
+  content: string | null;
+  hasSitemapDirective: boolean;
+  sitemapUrls: string[];
+  rules: number;
+  issues: string[];
+}
+
+export interface SiteConfigSitemapResult {
+  exists: boolean;
+  url: string | null;
+  urlCount: number;
+  isIndex: boolean;
+  issues: string[];
+}
+
+export interface SiteConfigCheckerResponse {
+  robots: SiteConfigRobotsResult;
+  sitemap: SiteConfigSitemapResult;
+  domain: string;
+  checkedUrl: string;
 }
 
 // Tier 1: heading-extractor response
@@ -111,7 +144,7 @@ export type CheckStatus =
   | "skipped"
   | "manual";
 
-export type Tier1ToolName = "ogp" | "headings" | "links" | "speed" | "alt";
+export type Tier1ToolName = "ogp" | "headings" | "links" | "speed" | "alt" | "siteConfig";
 
 export interface CollectedToolResults {
   ogp: { data: OgpCheckerResponse } | { error: string } | null;
@@ -119,6 +152,7 @@ export interface CollectedToolResults {
   links: { data: LinkCheckerResponse } | { error: string } | null;
   speed: { data: SpeedCheckerResponse } | { error: string } | null;
   alt: { data: AltCheckerResponse } | { error: string } | null;
+  siteConfig: { data: SiteConfigCheckerResponse } | { error: string } | null;
 }
 
 export interface CheckItemDefinition {

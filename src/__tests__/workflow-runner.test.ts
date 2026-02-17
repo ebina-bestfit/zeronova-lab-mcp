@@ -5,6 +5,7 @@ import type {
   LinkCheckerResponse,
   SpeedCheckerResponse,
   AltCheckerResponse,
+  SiteConfigCheckerResponse,
 } from "../types.js";
 
 // ---- Mock all client functions ----
@@ -23,6 +24,8 @@ const mockCheckSpeed = vi.fn<
 >();
 const mockCheckAltAttributes =
   vi.fn<(url: string) => Promise<AltCheckerResponse>>();
+const mockCheckSiteConfig =
+  vi.fn<(url: string) => Promise<SiteConfigCheckerResponse>>();
 
 vi.mock("../client.js", () => ({
   checkOgp: (...args: unknown[]) => mockCheckOgp(args[0] as string),
@@ -33,6 +36,8 @@ vi.mock("../client.js", () => ({
     mockCheckSpeed(args[0] as string, args[1] as "mobile" | "desktop"),
   checkAltAttributes: (...args: unknown[]) =>
     mockCheckAltAttributes(args[0] as string),
+  checkSiteConfig: (...args: unknown[]) =>
+    mockCheckSiteConfig(args[0] as string),
 }));
 
 const { runWorkflow } = await import("../tools/tier2/workflow-runner.js");
@@ -61,6 +66,10 @@ function makeOgpResponse(
       description: "Twitter description",
       image: "https://example.com/twitter.png",
     },
+    canonical: "https://example.com",
+    jsonLd: [
+      { type: "WebSite", valid: true, raw: '{"@type":"WebSite","name":"Example"}' },
+    ],
     rawUrl: "https://example.com",
     ...overrides,
   };
@@ -157,12 +166,38 @@ function makeAltResponse(
   };
 }
 
+function makeSiteConfigResponse(
+  overrides?: Partial<SiteConfigCheckerResponse>,
+): SiteConfigCheckerResponse {
+  return {
+    robots: {
+      exists: true,
+      content: "User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml",
+      hasSitemapDirective: true,
+      sitemapUrls: ["https://example.com/sitemap.xml"],
+      rules: 2,
+      issues: [],
+    },
+    sitemap: {
+      exists: true,
+      url: "https://example.com/sitemap.xml",
+      urlCount: 42,
+      isIndex: false,
+      issues: [],
+    },
+    domain: "https://example.com",
+    checkedUrl: "https://example.com",
+    ...overrides,
+  };
+}
+
 function setupAllMocksSuccess() {
   mockCheckOgp.mockResolvedValue(makeOgpResponse());
   mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
   mockCheckLinks.mockResolvedValue(makeLinksResponse());
   mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
   mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+  mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
 }
 
 // ---- Tests ----
@@ -174,6 +209,7 @@ describe("runWorkflow", () => {
     mockCheckLinks.mockReset();
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
+    mockCheckSiteConfig.mockReset();
   });
 
   it("returns a complete audit report with all tools passing", async () => {
@@ -193,19 +229,13 @@ describe("runWorkflow", () => {
     expect(report.checklist.total).toBe(seoAuditChecklist.length);
     expect(report.checklist.items).toHaveLength(seoAuditChecklist.length);
 
-    // All auto-verifiable items should be pass or warn (no fail with good data)
-    const autoItems = report.checklist.items.filter(
-      (i) => i.status !== "manual",
-    );
-    for (const item of autoItems) {
+    // All items should be pass or warn (no fail with good data, no manual items for SEO audit)
+    for (const item of report.checklist.items) {
       expect(["pass", "warn"]).toContain(item.status);
     }
 
-    // Manual items should be present
-    const manualItems = report.checklist.items.filter(
-      (i) => i.status === "manual",
-    );
-    expect(manualItems.length).toBeGreaterThan(0);
+    // SEO audit should have 0 manual items (all 16 auto-verifiable after Phase 2.5)
+    expect(report.checklist.manual).toBe(0);
   });
 
   it("handles individual tool failure gracefully (partial results)", async () => {
@@ -217,6 +247,7 @@ describe("runWorkflow", () => {
       new Error("PageSpeed API unavailable"),
     );
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -299,6 +330,7 @@ describe("runWorkflow", () => {
         },
       }),
     );
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -376,6 +408,7 @@ describe("runWorkflow", () => {
       }),
     );
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -475,10 +508,12 @@ describe("runWorkflow", () => {
     expect(report.results).toHaveProperty("links");
     expect(report.results).toHaveProperty("speed");
     expect(report.results).toHaveProperty("alt");
+    expect(report.results).toHaveProperty("siteConfig");
 
     expect(report.results["ogp"].status).toBe("pass");
     expect(report.results["links"].status).toBe("pass");
     expect(report.results["alt"].status).toBe("pass");
+    expect(report.results["siteConfig"].status).toBe("pass");
   });
 
   it("returns score 0 when all tools fail", async () => {
@@ -487,6 +522,7 @@ describe("runWorkflow", () => {
     mockCheckLinks.mockRejectedValue(new Error("API error"));
     mockCheckSpeed.mockRejectedValue(new Error("API error"));
     mockCheckAltAttributes.mockRejectedValue(new Error("API error"));
+    mockCheckSiteConfig.mockRejectedValue(new Error("API error"));
 
     const report = await runWorkflow(
       "https://example.com",
@@ -497,22 +533,16 @@ describe("runWorkflow", () => {
     // Score = 0 when all tools fail (no evaluable items)
     expect(report.score).toBe(0);
 
-    // All auto items should be "error"
-    const autoItems = report.checklist.items.filter(
-      (i) => i.status !== "manual",
-    );
-    for (const item of autoItems) {
+    // All items should be "error" (SEO audit has 0 manual items after Phase 2.5)
+    for (const item of report.checklist.items) {
       expect(item.status).toBe("error");
     }
 
     // Summary should mention "未評価"
     expect(report.summary).toContain("未評価");
 
-    // Manual items should still be present
-    const manualItems = report.checklist.items.filter(
-      (i) => i.status === "manual",
-    );
-    expect(manualItems.length).toBeGreaterThan(0);
+    // SEO audit should have 0 manual items
+    expect(report.checklist.manual).toBe(0);
   });
 
   it("distinguishes bot-blocked links (403 with warning) from truly broken links", async () => {
@@ -543,6 +573,7 @@ describe("runWorkflow", () => {
     );
     mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -597,6 +628,7 @@ describe("runWorkflow", () => {
     );
     mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -631,8 +663,8 @@ describe("runWorkflow", () => {
       sendProgress,
     );
 
-    // Should have start (0), per-tool (1-5), and completion (6) = 7 calls
-    expect(sendProgress).toHaveBeenCalledTimes(7);
+    // Should have start (0), per-tool (1-6), and completion (7) = 8 calls
+    expect(sendProgress).toHaveBeenCalledTimes(8);
     // First call: progress 0 (start)
     expect(sendProgress.mock.calls[0][0]).toBe(0);
     expect(sendProgress.mock.calls[0][2]).toContain("監査開始");

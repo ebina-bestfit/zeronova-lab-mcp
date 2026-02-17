@@ -5,6 +5,7 @@ import type {
   LinkCheckerResponse,
   SpeedCheckerResponse,
   AltCheckerResponse,
+  SiteConfigCheckerResponse,
 } from "../types.js";
 
 // ---- Mock all client functions ----
@@ -23,6 +24,8 @@ const mockCheckSpeed = vi.fn<
 >();
 const mockCheckAltAttributes =
   vi.fn<(url: string) => Promise<AltCheckerResponse>>();
+const mockCheckSiteConfig =
+  vi.fn<(url: string) => Promise<SiteConfigCheckerResponse>>();
 
 vi.mock("../client.js", () => ({
   checkOgp: (...args: unknown[]) => mockCheckOgp(args[0] as string),
@@ -33,6 +36,8 @@ vi.mock("../client.js", () => ({
     mockCheckSpeed(args[0] as string, args[1] as "mobile" | "desktop"),
   checkAltAttributes: (...args: unknown[]) =>
     mockCheckAltAttributes(args[0] as string),
+  checkSiteConfig: (...args: unknown[]) =>
+    mockCheckSiteConfig(args[0] as string),
 }));
 
 const { handleSeoAudit } = await import(
@@ -62,6 +67,10 @@ function setupAllMocksSuccess() {
       description: "Twitter description here",
       image: "https://example.com/twitter.png",
     },
+    canonical: "https://example.com",
+    jsonLd: [
+      { type: "WebSite", valid: true, raw: '{"@type":"WebSite","name":"Example"}' },
+    ],
     rawUrl: "https://example.com",
   });
   mockExtractHeadings.mockResolvedValue({
@@ -123,6 +132,25 @@ function setupAllMocksSuccess() {
       decorative: 0,
     },
   });
+  mockCheckSiteConfig.mockResolvedValue({
+    robots: {
+      exists: true,
+      content: "User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml",
+      hasSitemapDirective: true,
+      sitemapUrls: ["https://example.com/sitemap.xml"],
+      rules: 2,
+      issues: [],
+    },
+    sitemap: {
+      exists: true,
+      url: "https://example.com/sitemap.xml",
+      urlCount: 42,
+      isIndex: false,
+      issues: [],
+    },
+    domain: "https://example.com",
+    checkedUrl: "https://example.com",
+  });
 }
 
 describe("handleSeoAudit", () => {
@@ -132,6 +160,7 @@ describe("handleSeoAudit", () => {
     mockCheckLinks.mockReset();
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
+    mockCheckSiteConfig.mockReset();
   });
 
   it("returns an audit report with auditType seo-audit", async () => {
@@ -149,6 +178,7 @@ describe("handleWebLaunchAudit", () => {
     mockCheckLinks.mockReset();
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
+    mockCheckSiteConfig.mockReset();
   });
 
   it("returns an audit report with auditType web-launch-audit", async () => {
@@ -156,8 +186,8 @@ describe("handleWebLaunchAudit", () => {
     const report = await handleWebLaunchAudit("https://example.com");
     expect(report.auditType).toBe("web-launch-audit");
     expect(report.checklist.total).toBe(18);
-    // Should have more manual items than SEO audit (branding, security)
-    expect(report.checklist.manual).toBeGreaterThanOrEqual(5);
+    // 4 manual items: contrast, favicon, og-brand, password
+    expect(report.checklist.manual).toBe(4);
   });
 });
 
@@ -168,6 +198,7 @@ describe("handleFreelanceDeliveryAudit", () => {
     mockCheckLinks.mockReset();
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
+    mockCheckSiteConfig.mockReset();
   });
 
   it("returns an audit report with auditType freelance-delivery-audit", async () => {

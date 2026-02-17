@@ -4,7 +4,7 @@ MCP Server for [ZERONOVA LAB](https://zeronova-lab.com) tools — SEO audit, lin
 
 ## Features
 
-### Tier 1: Individual Tools (6 tools)
+### Tier 1: Individual Tools (7 tools)
 
 Single-purpose API wrappers for web page analysis:
 
@@ -13,9 +13,10 @@ Single-purpose API wrappers for web page analysis:
 | `check_alt_attributes` | Check alt attributes of all images on a webpage |
 | `check_links` | Check all links on a webpage for broken URLs |
 | `check_page_speed` | Analyze webpage performance using PageSpeed Insights |
-| `check_ogp` | Check OGP and Twitter Card meta tags |
+| `check_ogp` | Check OGP, Twitter Card meta tags, canonical URL, and JSON-LD structured data |
 | `extract_headings` | Extract H1-H6 heading hierarchy |
 | `check_x_card` | Check X (Twitter) Card settings and validation |
+| `check_site_config` | Check robots.txt and XML sitemap configuration |
 
 ### Tier 2: Workflow Tools (3 tools)
 
@@ -23,15 +24,15 @@ Single-purpose API wrappers for web page analysis:
 
 | Tool | Description |
 |------|-------------|
-| `run_seo_audit` | Comprehensive SEO audit with scoring (0-100). Chains OGP, heading, link, speed, and alt checks into a unified report. |
-| `run_web_launch_audit` | Pre-launch quality audit. SEO, performance, link integrity, accessibility, and branding checks. |
-| `run_freelance_delivery_audit` | Pre-delivery audit for freelance projects. Quality, SEO, and manual checklist items. |
+| `run_seo_audit` | Comprehensive SEO audit with scoring (0-100). Chains 6 tools (OGP, heading, link, speed, alt, site config) into a unified report with 16 auto-verified items. |
+| `run_web_launch_audit` | Pre-launch quality audit. SEO, performance, link integrity, accessibility, and branding checks (14 auto + 4 manual items). |
+| `run_freelance_delivery_audit` | Pre-delivery audit for freelance projects. Quality, SEO, and manual checklist items (7 auto + 6 manual items). |
 
 **Workflow features:**
 - Checklist-driven evaluation with weighted scoring (pass = full weight, warn = half, fail = 0)
 - Partial failure resilience — individual tool failures don't stop the workflow
 - Progress reporting via MCP `notifications/progress` protocol
-- Manual check items for non-automatable verification (robots.txt, JSON-LD, contrast, etc.)
+- Bot-blocked links (e.g. X/Twitter 403) are distinguished from true broken links
 
 ## Installation
 
@@ -110,12 +111,12 @@ Analyze webpage performance using Google PageSpeed Insights.
 
 #### check_ogp
 
-Check Open Graph Protocol and Twitter Card meta tags.
+Check Open Graph Protocol, Twitter Card meta tags, canonical URL, and JSON-LD structured data.
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
-**Returns:** OGP data (title, description, image, url, type, siteName) and Twitter Card data with fallback chain resolution.
+**Returns:** OGP data (title, description, image, url, type, siteName), Twitter Card data with fallback chain resolution, canonical URL (`<link rel="canonical">`), and JSON-LD items (type, validity, raw content).
 
 #### extract_headings
 
@@ -135,19 +136,27 @@ Check X (Twitter) Card settings for a webpage.
 
 **Returns:** Card data, validation results with specific issues, and OGP fallback values.
 
+#### check_site_config
+
+Check robots.txt and XML sitemap configuration for a website.
+
+**Parameters:**
+- `url` (required): Target webpage URL (domain is extracted automatically)
+
+**Returns:** robots.txt status (exists, content, rules count, Sitemap directives, issues) and sitemap.xml status (exists, URL count, sitemap index detection, issues).
+
 ### Tier 2 Tools
 
 #### run_seo_audit
 
-Comprehensive SEO audit that chains multiple checks into a unified report with scoring.
+Comprehensive SEO audit that chains 6 tools into a unified report with scoring.
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- Checklist results (16 items): OGP title/description/image, H1 uniqueness, heading hierarchy, broken links, page speed, alt attributes, and more
+- 16 auto-verified checklist items: meta title/description, canonical URL, JSON-LD, robots.txt, XML sitemap, H1 uniqueness, heading hierarchy, alt attributes, performance score, LCP, CLS, OGP image, Twitter Card/image, broken links
 - Weighted score (0-100)
-- Manual check items: robots.txt, JSON-LD, mobile-friendly, canonical URL
 
 #### run_web_launch_audit
 
@@ -157,9 +166,9 @@ Pre-launch quality audit for websites about to go live.
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- Checklist results (18 items): All SEO checks plus X Card, favicons, error pages, branding consistency
+- 14 auto-verified checklist items: meta tags, OGP, Twitter Card, heading structure, robots.txt, sitemap, JSON-LD, performance, LCP, CLS, broken links, alt attributes
+- 4 manual check items: contrast ratio, favicon, OGP brand design, admin password
 - Weighted score (0-100)
-- Manual check items: favicon, 404 page, form validation, analytics, contrast ratio
 
 #### run_freelance_delivery_audit
 
@@ -169,9 +178,9 @@ Pre-delivery audit for freelance web projects.
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- Checklist results (13 items): Core SEO, alt attributes, page speed, broken links
+- 7 auto-verified checklist items: broken links, page speed, alt attributes, H1, meta title, meta description, OGP image
+- 6 manual check items: contrast, proofreading, favicon, invoice, pricing, admin password
 - Weighted score (0-100)
-- Manual check items: cross-browser testing, copyright year, SSL, contact form
 
 ## Configuration
 
@@ -199,7 +208,7 @@ Example with custom API URL:
 
 ## Security
 
-- **SSRF Protection**: URLs are validated for protocol (http/https only) and private IP ranges (localhost, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16) are blocked.
+- **SSRF Protection**: URLs are validated for protocol (http/https only) and private IP ranges (localhost, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16) are blocked. API routes use `redirect: "manual"` with per-hop validation.
 - **Rate Limiting**: Each tool is limited to **10 requests per minute** locally. The ZERONOVA LAB API also enforces its own rate limits.
 - **Response Validation**: All API responses are validated against Zod schemas to detect format changes early.
 - **Error Sanitization**: Internal paths and API URLs are never exposed in error messages.

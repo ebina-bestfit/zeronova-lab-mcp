@@ -16,6 +16,7 @@ import {
   checkSpeed,
   extractHeadings,
   checkAltAttributes,
+  checkSiteConfig,
 } from "../../client.js";
 import type {
   CheckItemDefinition,
@@ -30,6 +31,7 @@ import type {
   LinkCheckerResponse,
   SpeedCheckerResponse,
   AltCheckerResponse,
+  SiteConfigCheckerResponse,
 } from "../../types.js";
 
 // Checklist 2-C: Workflow timeout = 60 seconds
@@ -41,6 +43,7 @@ const TOOL_DISPLAY_NAMES: Record<Tier1ToolName, string> = {
   links: "リンクチェック中",
   speed: "ページ速度チェック中",
   alt: "alt属性チェック中",
+  siteConfig: "サイト設定チェック中",
 };
 
 /**
@@ -52,7 +55,7 @@ async function executeTier1Tool(
   url: string,
   tool: Tier1ToolName,
 ): Promise<
-  | { data: OgpCheckerResponse | HeadingExtractorResponse | LinkCheckerResponse | SpeedCheckerResponse | AltCheckerResponse }
+  | { data: OgpCheckerResponse | HeadingExtractorResponse | LinkCheckerResponse | SpeedCheckerResponse | AltCheckerResponse | SiteConfigCheckerResponse }
   | { error: string }
 > {
   try {
@@ -67,6 +70,8 @@ async function executeTier1Tool(
         return { data: await checkSpeed(url, "mobile") };
       case "alt":
         return { data: await checkAltAttributes(url) };
+      case "siteConfig":
+        return { data: await checkSiteConfig(url) };
     }
   } catch (error) {
     const message =
@@ -118,6 +123,12 @@ function buildToolResultSummary(
             description: d.twitter.description || null,
             image: d.twitter.image || null,
           },
+          canonical: d.canonical || null,
+          jsonLd: d.jsonLd.map((item) => ({
+            type: item.type,
+            valid: item.valid,
+          })),
+          jsonLdCount: d.jsonLd.length,
         },
       };
     }
@@ -252,6 +263,33 @@ function buildToolResultSummary(
         },
       };
     }
+    case "siteConfig": {
+      const d = result.data as SiteConfigCheckerResponse;
+      const robotsOk = d.robots.exists && d.robots.issues.length === 0;
+      const sitemapOk = d.sitemap.exists && d.sitemap.urlCount > 0 && d.sitemap.issues.length === 0;
+      const allGood = robotsOk && sitemapOk;
+      return {
+        status: allGood ? "pass" : !d.robots.exists && !d.sitemap.exists ? "fail" : "warn",
+        details: {
+          robots: {
+            exists: d.robots.exists,
+            content: d.robots.content,
+            rules: d.robots.rules,
+            hasSitemapDirective: d.robots.hasSitemapDirective,
+            sitemapUrls: d.robots.sitemapUrls,
+            issues: d.robots.issues,
+          },
+          sitemap: {
+            exists: d.sitemap.exists,
+            url: d.sitemap.url,
+            urlCount: d.sitemap.urlCount,
+            isIndex: d.sitemap.isIndex,
+            issues: d.sitemap.issues,
+          },
+          domain: d.domain,
+        },
+      };
+    }
   }
 }
 
@@ -330,6 +368,7 @@ export async function runWorkflow(
     "headings",
     "alt",
     "links",
+    "siteConfig",
     "speed",
   ];
   const toolsToExecute = executionOrder.filter((t) => requiredTools.has(t));
@@ -341,6 +380,7 @@ export async function runWorkflow(
     links: null,
     speed: null,
     alt: null,
+    siteConfig: null,
   };
 
   const totalTools = toolsToExecute.length;

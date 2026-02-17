@@ -5,6 +5,7 @@ import type {
   SpeedCheckerResponse,
   OgpCheckerResponse,
   HeadingExtractorResponse,
+  SiteConfigCheckerResponse,
 } from "./types.js";
 
 // Checklist 2-B: API base URL configurable via ZERONOVA_API_URL env var
@@ -20,7 +21,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const RETRY_DELAY_MS = 2_000;
 
 // Checklist 2-B: User-Agent format = ZeronovaLabMCP/{version}
-const USER_AGENT = "ZeronovaLabMCP/0.2.0";
+const USER_AGENT = "ZeronovaLabMCP/0.2.2";
 
 export class ApiError extends Error {
   constructor(
@@ -190,6 +191,12 @@ const speedCheckerResponseSchema = z.object({
   fetchedAt: z.string(),
 });
 
+const jsonLdItemSchema = z.object({
+  type: z.string(),
+  valid: z.boolean(),
+  raw: z.string(),
+});
+
 const ogpCheckerResponseSchema = z.object({
   ogp: z.object({
     title: z.string(),
@@ -205,7 +212,29 @@ const ogpCheckerResponseSchema = z.object({
     description: z.string(),
     image: z.string(),
   }),
+  canonical: z.string(),
+  jsonLd: z.array(jsonLdItemSchema),
   rawUrl: z.string(),
+});
+
+const siteConfigCheckerResponseSchema = z.object({
+  robots: z.object({
+    exists: z.boolean(),
+    content: z.union([z.string(), z.null()]),
+    hasSitemapDirective: z.boolean(),
+    sitemapUrls: z.array(z.string()),
+    rules: z.number(),
+    issues: z.array(z.string()),
+  }),
+  sitemap: z.object({
+    exists: z.boolean(),
+    url: z.union([z.string(), z.null()]),
+    urlCount: z.number(),
+    isIndex: z.boolean(),
+    issues: z.array(z.string()),
+  }),
+  domain: z.string(),
+  checkedUrl: z.string(),
 });
 
 const headingExtractorResponseSchema = z.object({
@@ -273,5 +302,16 @@ export async function extractHeadings(
     raw,
     headingExtractorResponseSchema,
     "heading-extractor",
+  );
+}
+
+export async function checkSiteConfig(
+  url: string,
+): Promise<SiteConfigCheckerResponse> {
+  const raw = await fetchApi<unknown>("site-config-checker", { url });
+  return validateResponse(
+    raw,
+    siteConfigCheckerResponseSchema,
+    "site-config-checker",
   );
 }
