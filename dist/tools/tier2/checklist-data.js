@@ -29,6 +29,12 @@ function getAltData(results) {
         return null;
     return r.data;
 }
+function getSiteConfigData(results) {
+    const r = results.siteConfig;
+    if (!r || "error" in r)
+        return null;
+    return r.data;
+}
 function toolError(toolName) {
     return { status: "error", detail: `${toolName}のデータ取得に失敗` };
 }
@@ -252,6 +258,70 @@ function evalCLS(results) {
         detail: `CLS ${clsValue.toFixed(3)}（要改善: 0.25超）`,
     };
 }
+function evalCanonical(results) {
+    const ogp = getOgpData(results);
+    if (!ogp)
+        return toolError("OGPチェッカー");
+    if (ogp.canonical) {
+        return { status: "pass", detail: `canonical URL: ${ogp.canonical}` };
+    }
+    return { status: "fail", detail: "canonical URLが未設定（<link rel=\"canonical\"> が見つかりません）" };
+}
+function evalJsonLd(results) {
+    const ogp = getOgpData(results);
+    if (!ogp)
+        return toolError("OGPチェッカー");
+    if (!ogp.jsonLd || ogp.jsonLd.length === 0) {
+        return { status: "fail", detail: "JSON-LD構造化データが未設定（<script type=\"application/ld+json\"> が見つかりません）" };
+    }
+    const validItems = ogp.jsonLd.filter((item) => item.valid);
+    const invalidItems = ogp.jsonLd.filter((item) => !item.valid);
+    const types = validItems.map((item) => item.type).join(", ");
+    if (invalidItems.length > 0) {
+        return {
+            status: "warn",
+            detail: `JSON-LD ${ogp.jsonLd.length}件中${invalidItems.length}件が不正。有効: ${types || "なし"}`,
+        };
+    }
+    return { status: "pass", detail: `JSON-LD ${validItems.length}件: ${types}` };
+}
+function evalRobotsTxt(results) {
+    const siteConfig = getSiteConfigData(results);
+    if (!siteConfig)
+        return toolError("サイト設定チェッカー");
+    if (!siteConfig.robots.exists) {
+        return { status: "fail", detail: "robots.txt が見つかりません" };
+    }
+    if (siteConfig.robots.issues.length > 0) {
+        return {
+            status: "warn",
+            detail: `robots.txt にissueあり: ${siteConfig.robots.issues.slice(0, 2).join("、")}${siteConfig.robots.issues.length > 2 ? ` 他${siteConfig.robots.issues.length - 2}件` : ""}（ルール${siteConfig.robots.rules}件）`,
+        };
+    }
+    const sitemapInfo = siteConfig.robots.hasSitemapDirective
+        ? `、Sitemapディレクティブあり（${siteConfig.robots.sitemapUrls[0]}）`
+        : "";
+    return { status: "pass", detail: `robots.txt 正常（ルール${siteConfig.robots.rules}件${sitemapInfo}）` };
+}
+function evalSitemap(results) {
+    const siteConfig = getSiteConfigData(results);
+    if (!siteConfig)
+        return toolError("サイト設定チェッカー");
+    if (!siteConfig.sitemap.exists) {
+        return { status: "fail", detail: `XMLサイトマップが見つかりません（${siteConfig.sitemap.url || "検出不可"}）` };
+    }
+    if (siteConfig.sitemap.urlCount === 0) {
+        return { status: "warn", detail: `サイトマップにURLが含まれていません（${siteConfig.sitemap.url}）` };
+    }
+    if (siteConfig.sitemap.issues.length > 0) {
+        return {
+            status: "warn",
+            detail: `サイトマップにissueあり: ${siteConfig.sitemap.issues.slice(0, 2).join("、")}（${siteConfig.sitemap.urlCount} URL）`,
+        };
+    }
+    const indexInfo = siteConfig.sitemap.isIndex ? "（サイトマップインデックス）" : "";
+    return { status: "pass", detail: `サイトマップ正常: ${siteConfig.sitemap.urlCount} URL${indexInfo}（${siteConfig.sitemap.url}）` };
+}
 function evalMetaTitleExists(results) {
     const ogp = getOgpData(results);
     if (!ogp)
@@ -297,7 +367,9 @@ export const seoAuditChecklist = [
         category: "メタ情報",
         label: "canonical URLが正しく設定されているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "ogp",
+        evaluate: evalCanonical,
     },
     // 構造化データ
     {
@@ -305,7 +377,9 @@ export const seoAuditChecklist = [
         category: "構造化データ",
         label: "JSON-LD構造化データが設定されているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "ogp",
+        evaluate: evalJsonLd,
     },
     // クローラビリティ
     {
@@ -313,14 +387,18 @@ export const seoAuditChecklist = [
         category: "クローラビリティ",
         label: "robots.txtが適切に設定されているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "siteConfig",
+        evaluate: evalRobotsTxt,
     },
     {
         id: "seo-sitemap",
         category: "クローラビリティ",
         label: "XMLサイトマップが生成・送信されているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "siteConfig",
+        evaluate: evalSitemap,
     },
     // コンテンツ
     {
@@ -479,21 +557,27 @@ export const webLaunchAuditChecklist = [
         category: "SEO",
         label: "robots.txtでクロールを許可しているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "siteConfig",
+        evaluate: evalRobotsTxt,
     },
     {
         id: "wl-sitemap",
         category: "SEO",
         label: "サイトマップXMLが生成されているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "siteConfig",
+        evaluate: evalSitemap,
     },
     {
         id: "wl-jsonld",
         category: "SEO",
         label: "構造化データ（JSON-LD）を設定しているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "ogp",
+        evaluate: evalJsonLd,
     },
     // パフォーマンス
     {

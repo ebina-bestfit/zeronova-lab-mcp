@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-18
+
+### Added
+
+- New Tier 1 tool: `check_security_headers` — checks 6 HTTP security headers (HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy) with pass/warn/fail status and overall security score (0-100)
+- OGP checker (`check_ogp`) now returns `favicon` data: `<link>` icon tags (rel, href, type, sizes), apple-touch-icon detection, and `/favicon.ico` existence check
+- Speed checker (`check_page_speed`) now returns `accessibility` data: accessibility score and color-contrast violations (snippet + explanation, up to 10 items)
+- 6 checklist items converted from manual to auto-verified across Tier 2 workflows:
+  - **Web Launch Audit**: color contrast (via speed checker accessibility), favicon (via OGP checker favicon), security headers (replaces admin password check)
+  - **Freelance Delivery Audit**: color contrast, favicon, security headers (replaces admin password check)
+- Web launch audit now runs 7 Tier 1 tools (was 6) — 17 auto-verified + 1 manual item (was 14 auto + 4 manual)
+- Freelance delivery audit now runs 7 Tier 1 tools — 10 auto-verified + 3 manual items (was 7 auto + 6 manual)
+- Zod response schemas added: `accessibilityResultSchema`, `contrastViolationSchema`, `faviconResultSchema`, `faviconItemSchema`, `securityHeadersCheckerResponseSchema`
+- New evaluation functions: `evalFavicon()`, `evalColorContrast()`, `evalSecurityHeaders()`
+
 ## [0.2.2] - 2026-02-17
 
 ### Fixed

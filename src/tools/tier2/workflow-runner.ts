@@ -17,6 +17,7 @@ import {
   extractHeadings,
   checkAltAttributes,
   checkSiteConfig,
+  checkSecurityHeaders,
 } from "../../client.js";
 import type {
   CheckItemDefinition,
@@ -32,6 +33,7 @@ import type {
   SpeedCheckerResponse,
   AltCheckerResponse,
   SiteConfigCheckerResponse,
+  SecurityHeadersCheckerResponse,
 } from "../../types.js";
 
 // Checklist 2-C: Workflow timeout = 60 seconds
@@ -41,9 +43,10 @@ const TOOL_DISPLAY_NAMES: Record<Tier1ToolName, string> = {
   ogp: "OGPチェック中",
   headings: "見出し構造チェック中",
   links: "リンクチェック中",
-  speed: "ページ速度チェック中",
+  speed: "ページ速度・アクセシビリティチェック中",
   alt: "alt属性チェック中",
   siteConfig: "サイト設定チェック中",
+  securityHeaders: "セキュリティヘッダーチェック中",
 };
 
 /**
@@ -55,7 +58,7 @@ async function executeTier1Tool(
   url: string,
   tool: Tier1ToolName,
 ): Promise<
-  | { data: OgpCheckerResponse | HeadingExtractorResponse | LinkCheckerResponse | SpeedCheckerResponse | AltCheckerResponse | SiteConfigCheckerResponse }
+  | { data: OgpCheckerResponse | HeadingExtractorResponse | LinkCheckerResponse | SpeedCheckerResponse | AltCheckerResponse | SiteConfigCheckerResponse | SecurityHeadersCheckerResponse }
   | { error: string }
 > {
   try {
@@ -72,6 +75,8 @@ async function executeTier1Tool(
         return { data: await checkAltAttributes(url) };
       case "siteConfig":
         return { data: await checkSiteConfig(url) };
+      case "securityHeaders":
+        return { data: await checkSecurityHeaders(url) };
     }
   } catch (error) {
     const message =
@@ -129,6 +134,16 @@ function buildToolResultSummary(
             valid: item.valid,
           })),
           jsonLdCount: d.jsonLd.length,
+          favicon: {
+            hasFavicon: d.favicon.hasFavicon,
+            hasAppleTouchIcon: d.favicon.hasAppleTouchIcon,
+            faviconIcoExists: d.favicon.faviconIcoExists,
+            icons: d.favicon.icons.map((i) => ({
+              rel: i.rel,
+              href: i.href,
+              sizes: i.sizes,
+            })),
+          },
         },
       };
     }
@@ -234,6 +249,14 @@ function buildToolResultSummary(
             ? { opportunities: d.opportunities.slice(0, 5) }
             : {}),
           ...(issues.length > 0 ? { issue: issues.join(", ") } : {}),
+          accessibility: {
+            score: d.accessibility.score,
+            colorContrast: {
+              score: d.accessibility.colorContrast.score,
+              violationCount: d.accessibility.colorContrast.violationCount,
+              violations: d.accessibility.colorContrast.violations.slice(0, 5),
+            },
+          },
         },
       };
     }
@@ -287,6 +310,27 @@ function buildToolResultSummary(
             issues: d.sitemap.issues,
           },
           domain: d.domain,
+        },
+      };
+    }
+    case "securityHeaders": {
+      const d = result.data as SecurityHeadersCheckerResponse;
+      const allPass = d.headers.every((h) => h.status === "pass");
+      const anyFail = d.headers.some((h) => h.status === "fail");
+      return {
+        status: allPass ? "pass" : anyFail ? "fail" : "warn",
+        details: {
+          score: d.summary.score,
+          present: d.summary.present,
+          missing: d.summary.missing,
+          total: d.summary.total,
+          headers: d.headers.map((h) => ({
+            name: h.name,
+            present: h.present,
+            status: h.status,
+            detail: h.detail,
+            ...(h.value ? { value: h.value.length > 100 ? h.value.slice(0, 97) + "..." : h.value } : {}),
+          })),
         },
       };
     }
@@ -369,6 +413,7 @@ export async function runWorkflow(
     "alt",
     "links",
     "siteConfig",
+    "securityHeaders",
     "speed",
   ];
   const toolsToExecute = executionOrder.filter((t) => requiredTools.has(t));
@@ -381,6 +426,7 @@ export async function runWorkflow(
     speed: null,
     alt: null,
     siteConfig: null,
+    securityHeaders: null,
   };
 
   const totalTools = toolsToExecute.length;

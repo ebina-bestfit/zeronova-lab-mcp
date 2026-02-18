@@ -6,6 +6,7 @@ import type {
   SpeedCheckerResponse,
   AltCheckerResponse,
   SiteConfigCheckerResponse,
+  SecurityHeadersCheckerResponse,
 } from "../types.js";
 
 // ---- Mock all client functions ----
@@ -26,6 +27,8 @@ const mockCheckAltAttributes =
   vi.fn<(url: string) => Promise<AltCheckerResponse>>();
 const mockCheckSiteConfig =
   vi.fn<(url: string) => Promise<SiteConfigCheckerResponse>>();
+const mockCheckSecurityHeaders =
+  vi.fn<(url: string) => Promise<SecurityHeadersCheckerResponse>>();
 
 vi.mock("../client.js", () => ({
   checkOgp: (...args: unknown[]) => mockCheckOgp(args[0] as string),
@@ -38,6 +41,8 @@ vi.mock("../client.js", () => ({
     mockCheckAltAttributes(args[0] as string),
   checkSiteConfig: (...args: unknown[]) =>
     mockCheckSiteConfig(args[0] as string),
+  checkSecurityHeaders: (...args: unknown[]) =>
+    mockCheckSecurityHeaders(args[0] as string),
 }));
 
 const { handleSeoAudit } = await import(
@@ -71,6 +76,12 @@ function setupAllMocksSuccess() {
     jsonLd: [
       { type: "WebSite", valid: true, raw: '{"@type":"WebSite","name":"Example"}' },
     ],
+    favicon: {
+      icons: [{ rel: "icon", href: "/favicon.ico", type: "image/x-icon", sizes: "" }],
+      hasFavicon: true,
+      hasAppleTouchIcon: true,
+      faviconIcoExists: true,
+    },
     rawUrl: "https://example.com",
   });
   mockExtractHeadings.mockResolvedValue({
@@ -108,6 +119,14 @@ function setupAllMocksSuccess() {
       tti: { score: 0.88, value: "1800", displayValue: "1.8 s" },
     },
     opportunities: [],
+    accessibility: {
+      score: 100,
+      colorContrast: {
+        score: 1,
+        violations: [],
+        violationCount: 0,
+      },
+    },
     fetchedAt: "2026-02-16T00:00:00Z",
   });
   mockCheckAltAttributes.mockResolvedValue({
@@ -151,6 +170,24 @@ function setupAllMocksSuccess() {
     domain: "https://example.com",
     checkedUrl: "https://example.com",
   });
+  mockCheckSecurityHeaders.mockResolvedValue({
+    headers: [
+      { name: "Strict-Transport-Security", present: true, value: "max-age=31536000; includeSubDomains", status: "pass", detail: "HSTS設定済み" },
+      { name: "Content-Security-Policy", present: true, value: "default-src 'self'", status: "pass", detail: "CSP設定済み" },
+      { name: "X-Content-Type-Options", present: true, value: "nosniff", status: "pass", detail: "nosniff設定済み" },
+      { name: "X-Frame-Options", present: true, value: "DENY", status: "pass", detail: "DENY設定済み" },
+      { name: "Referrer-Policy", present: true, value: "strict-origin-when-cross-origin", status: "pass", detail: "Referrer-Policy設定済み" },
+      { name: "Permissions-Policy", present: true, value: "camera=(), microphone=()", status: "pass", detail: "Permissions-Policy設定済み" },
+    ],
+    summary: {
+      total: 6,
+      present: 6,
+      missing: 0,
+      score: 100,
+    },
+    url: "https://example.com",
+    checkedUrl: "https://example.com",
+  });
 }
 
 describe("handleSeoAudit", () => {
@@ -161,6 +198,7 @@ describe("handleSeoAudit", () => {
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
     mockCheckSiteConfig.mockReset();
+    mockCheckSecurityHeaders.mockReset();
   });
 
   it("returns an audit report with auditType seo-audit", async () => {
@@ -179,6 +217,7 @@ describe("handleWebLaunchAudit", () => {
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
     mockCheckSiteConfig.mockReset();
+    mockCheckSecurityHeaders.mockReset();
   });
 
   it("returns an audit report with auditType web-launch-audit", async () => {
@@ -186,8 +225,9 @@ describe("handleWebLaunchAudit", () => {
     const report = await handleWebLaunchAudit("https://example.com");
     expect(report.auditType).toBe("web-launch-audit");
     expect(report.checklist.total).toBe(18);
-    // 4 manual items: contrast, favicon, og-brand, password
-    expect(report.checklist.manual).toBe(4);
+    // Phase 2.7: only 1 manual item remains (og-brand)
+    // contrast, favicon, security-headers are now auto-verifiable
+    expect(report.checklist.manual).toBe(1);
   });
 });
 
@@ -199,6 +239,7 @@ describe("handleFreelanceDeliveryAudit", () => {
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
     mockCheckSiteConfig.mockReset();
+    mockCheckSecurityHeaders.mockReset();
   });
 
   it("returns an audit report with auditType freelance-delivery-audit", async () => {
@@ -208,7 +249,8 @@ describe("handleFreelanceDeliveryAudit", () => {
     );
     expect(report.auditType).toBe("freelance-delivery-audit");
     expect(report.checklist.total).toBe(13);
-    // Freelance audit has manual items (contrast, proofreading, invoice, etc.)
-    expect(report.checklist.manual).toBeGreaterThanOrEqual(4);
+    // Phase 2.7: 3 manual items remain (proofreading, invoice, pricing)
+    // contrast, favicon, security-headers are now auto-verifiable
+    expect(report.checklist.manual).toBe(3);
   });
 });

@@ -6,6 +6,7 @@ import type {
   SpeedCheckerResponse,
   AltCheckerResponse,
   SiteConfigCheckerResponse,
+  SecurityHeadersCheckerResponse,
 } from "../types.js";
 
 // ---- Mock all client functions ----
@@ -26,6 +27,8 @@ const mockCheckAltAttributes =
   vi.fn<(url: string) => Promise<AltCheckerResponse>>();
 const mockCheckSiteConfig =
   vi.fn<(url: string) => Promise<SiteConfigCheckerResponse>>();
+const mockCheckSecurityHeaders =
+  vi.fn<(url: string) => Promise<SecurityHeadersCheckerResponse>>();
 
 vi.mock("../client.js", () => ({
   checkOgp: (...args: unknown[]) => mockCheckOgp(args[0] as string),
@@ -38,10 +41,12 @@ vi.mock("../client.js", () => ({
     mockCheckAltAttributes(args[0] as string),
   checkSiteConfig: (...args: unknown[]) =>
     mockCheckSiteConfig(args[0] as string),
+  checkSecurityHeaders: (...args: unknown[]) =>
+    mockCheckSecurityHeaders(args[0] as string),
 }));
 
 const { runWorkflow } = await import("../tools/tier2/workflow-runner.js");
-const { seoAuditChecklist } = await import(
+const { seoAuditChecklist, webLaunchAuditChecklist } = await import(
   "../tools/tier2/checklist-data.js"
 );
 
@@ -70,6 +75,12 @@ function makeOgpResponse(
     jsonLd: [
       { type: "WebSite", valid: true, raw: '{"@type":"WebSite","name":"Example"}' },
     ],
+    favicon: {
+      icons: [{ rel: "icon", href: "/favicon.ico", type: "image/x-icon", sizes: "" }],
+      hasFavicon: true,
+      hasAppleTouchIcon: true,
+      faviconIcoExists: true,
+    },
     rawUrl: "https://example.com",
     ...overrides,
   };
@@ -133,6 +144,14 @@ function makeSpeedResponse(
       tti: { score: 0.92, value: "1500", displayValue: "1.5 s" },
     },
     opportunities: [],
+    accessibility: {
+      score: 100,
+      colorContrast: {
+        score: 1,
+        violations: [],
+        violationCount: 0,
+      },
+    },
     fetchedAt: "2026-02-16T00:00:00Z",
     ...overrides,
   };
@@ -191,6 +210,30 @@ function makeSiteConfigResponse(
   };
 }
 
+function makeSecurityHeadersResponse(
+  overrides?: Partial<SecurityHeadersCheckerResponse>,
+): SecurityHeadersCheckerResponse {
+  return {
+    headers: [
+      { name: "Strict-Transport-Security", present: true, value: "max-age=31536000; includeSubDomains", status: "pass", detail: "HSTS設定済み" },
+      { name: "Content-Security-Policy", present: true, value: "default-src 'self'", status: "pass", detail: "CSP設定済み" },
+      { name: "X-Content-Type-Options", present: true, value: "nosniff", status: "pass", detail: "nosniff設定済み" },
+      { name: "X-Frame-Options", present: true, value: "DENY", status: "pass", detail: "DENY設定済み" },
+      { name: "Referrer-Policy", present: true, value: "strict-origin-when-cross-origin", status: "pass", detail: "Referrer-Policy設定済み" },
+      { name: "Permissions-Policy", present: true, value: "camera=(), microphone=()", status: "pass", detail: "Permissions-Policy設定済み" },
+    ],
+    summary: {
+      total: 6,
+      present: 6,
+      missing: 0,
+      score: 100,
+    },
+    url: "https://example.com",
+    checkedUrl: "https://example.com",
+    ...overrides,
+  };
+}
+
 function setupAllMocksSuccess() {
   mockCheckOgp.mockResolvedValue(makeOgpResponse());
   mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
@@ -198,6 +241,7 @@ function setupAllMocksSuccess() {
   mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
   mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
   mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+  mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
 }
 
 // ---- Tests ----
@@ -210,6 +254,7 @@ describe("runWorkflow", () => {
     mockCheckSpeed.mockReset();
     mockCheckAltAttributes.mockReset();
     mockCheckSiteConfig.mockReset();
+    mockCheckSecurityHeaders.mockReset();
   });
 
   it("returns a complete audit report with all tools passing", async () => {
@@ -248,6 +293,7 @@ describe("runWorkflow", () => {
     );
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -331,6 +377,7 @@ describe("runWorkflow", () => {
       }),
     );
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -404,11 +451,16 @@ describe("runWorkflow", () => {
           tti: { score: 0.75, value: "2200", displayValue: "2.2 s" },
         },
         opportunities: [],
+        accessibility: {
+          score: 100,
+          colorContrast: { score: 1, violations: [], violationCount: 0 },
+        },
         fetchedAt: "2026-02-16T00:00:00Z",
       }),
     );
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -459,7 +511,7 @@ describe("runWorkflow", () => {
     expect(progressMessages[progressMessages.length - 1]).toContain(
       "チェック完了",
     );
-    // Should have progress messages like "1/5: OGPチェック中..."
+    // Should have progress messages like "1/6: OGPチェック中..."
     expect(
       progressMessages.some((m) => m.includes("OGPチェック中")),
     ).toBe(true);
@@ -480,6 +532,8 @@ describe("runWorkflow", () => {
     expect(mockCheckLinks).toHaveBeenCalledTimes(1);
     expect(mockCheckSpeed).toHaveBeenCalledTimes(1);
     expect(mockCheckAltAttributes).toHaveBeenCalledTimes(1);
+    // SEO audit doesn't use securityHeaders
+    expect(mockCheckSecurityHeaders).toHaveBeenCalledTimes(0);
   });
 
   it("returns score of 100 when all auto items pass", async () => {
@@ -523,6 +577,7 @@ describe("runWorkflow", () => {
     mockCheckSpeed.mockRejectedValue(new Error("API error"));
     mockCheckAltAttributes.mockRejectedValue(new Error("API error"));
     mockCheckSiteConfig.mockRejectedValue(new Error("API error"));
+    mockCheckSecurityHeaders.mockRejectedValue(new Error("API error"));
 
     const report = await runWorkflow(
       "https://example.com",
@@ -574,6 +629,7 @@ describe("runWorkflow", () => {
     mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -629,6 +685,7 @@ describe("runWorkflow", () => {
     mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -664,6 +721,7 @@ describe("runWorkflow", () => {
     );
 
     // Should have start (0), per-tool (1-6), and completion (7) = 8 calls
+    // SEO audit uses 6 tools (no securityHeaders)
     expect(sendProgress).toHaveBeenCalledTimes(8);
     // First call: progress 0 (start)
     expect(sendProgress.mock.calls[0][0]).toBe(0);
@@ -672,5 +730,162 @@ describe("runWorkflow", () => {
     expect(
       sendProgress.mock.calls[sendProgress.mock.calls.length - 1][2],
     ).toContain("チェック完了");
+  });
+
+  // ---- Phase 2.7: Web Launch Audit with securityHeaders ----
+
+  it("web launch audit includes securityHeaders tool", async () => {
+    setupAllMocksSuccess();
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "web-launch-audit",
+      webLaunchAuditChecklist,
+    );
+
+    // securityHeaders should be called for web launch audit
+    expect(mockCheckSecurityHeaders).toHaveBeenCalledTimes(1);
+
+    // Should have securityHeaders in results
+    expect(report.results).toHaveProperty("securityHeaders");
+    expect(report.results["securityHeaders"].status).toBe("pass");
+
+    // Security headers item should pass
+    const secItem = report.checklist.items.find(
+      (i) => i.id === "wl-security-headers",
+    );
+    expect(secItem?.status).toBe("pass");
+  });
+
+  it("web launch audit evaluates favicon from OGP data", async () => {
+    setupAllMocksSuccess();
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "web-launch-audit",
+      webLaunchAuditChecklist,
+    );
+
+    // Favicon should pass
+    const faviconItem = report.checklist.items.find(
+      (i) => i.id === "wl-favicon",
+    );
+    expect(faviconItem?.status).toBe("pass");
+  });
+
+  it("web launch audit evaluates color contrast from speed data", async () => {
+    setupAllMocksSuccess();
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "web-launch-audit",
+      webLaunchAuditChecklist,
+    );
+
+    // Contrast should pass
+    const contrastItem = report.checklist.items.find(
+      (i) => i.id === "wl-contrast",
+    );
+    expect(contrastItem?.status).toBe("pass");
+  });
+
+  it("detects missing favicon", async () => {
+    mockCheckOgp.mockResolvedValue(
+      makeOgpResponse({
+        favicon: {
+          icons: [],
+          hasFavicon: false,
+          hasAppleTouchIcon: false,
+          faviconIcoExists: false,
+        },
+      }),
+    );
+    mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
+    mockCheckLinks.mockResolvedValue(makeLinksResponse());
+    mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
+    mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "web-launch-audit",
+      webLaunchAuditChecklist,
+    );
+
+    const faviconItem = report.checklist.items.find(
+      (i) => i.id === "wl-favicon",
+    );
+    expect(faviconItem?.status).toBe("fail");
+    expect(faviconItem?.detail).toContain("ファビコンが未設定");
+  });
+
+  it("detects color contrast violations", async () => {
+    mockCheckOgp.mockResolvedValue(makeOgpResponse());
+    mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
+    mockCheckLinks.mockResolvedValue(makeLinksResponse());
+    mockCheckSpeed.mockResolvedValue(
+      makeSpeedResponse({
+        accessibility: {
+          score: 70,
+          colorContrast: {
+            score: 0,
+            violations: [
+              { snippet: "<p class=\"light-text\">Low contrast text</p>", explanation: "Contrast ratio 2.5:1" },
+            ],
+            violationCount: 1,
+          },
+        },
+      }),
+    );
+    mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "web-launch-audit",
+      webLaunchAuditChecklist,
+    );
+
+    const contrastItem = report.checklist.items.find(
+      (i) => i.id === "wl-contrast",
+    );
+    expect(contrastItem?.status).toBe("fail");
+    expect(contrastItem?.detail).toContain("コントラスト違反");
+  });
+
+  it("detects weak security headers", async () => {
+    mockCheckOgp.mockResolvedValue(makeOgpResponse());
+    mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
+    mockCheckLinks.mockResolvedValue(makeLinksResponse());
+    mockCheckSpeed.mockResolvedValue(makeSpeedResponse());
+    mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(
+      makeSecurityHeadersResponse({
+        headers: [
+          { name: "Strict-Transport-Security", present: false, value: null, status: "fail", detail: "HSTS未設定" },
+          { name: "Content-Security-Policy", present: false, value: null, status: "fail", detail: "CSP未設定" },
+          { name: "X-Content-Type-Options", present: false, value: null, status: "fail", detail: "未設定" },
+          { name: "X-Frame-Options", present: false, value: null, status: "fail", detail: "未設定" },
+          { name: "Referrer-Policy", present: false, value: null, status: "fail", detail: "未設定" },
+          { name: "Permissions-Policy", present: false, value: null, status: "fail", detail: "未設定" },
+        ],
+        summary: { total: 6, present: 0, missing: 6, score: 0 },
+      }),
+    );
+
+    const report = await runWorkflow(
+      "https://example.com",
+      "web-launch-audit",
+      webLaunchAuditChecklist,
+    );
+
+    const secItem = report.checklist.items.find(
+      (i) => i.id === "wl-security-headers",
+    );
+    expect(secItem?.status).toBe("fail");
+    expect(secItem?.detail).toContain("セキュリティヘッダースコア: 0点");
   });
 });

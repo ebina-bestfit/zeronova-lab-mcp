@@ -4,7 +4,7 @@ MCP Server for [ZERONOVA LAB](https://zeronova-lab.com) tools — SEO audit, lin
 
 ## Features
 
-### Tier 1: Individual Tools (7 tools)
+### Tier 1: Individual Tools (8 tools)
 
 Single-purpose API wrappers for web page analysis:
 
@@ -12,11 +12,12 @@ Single-purpose API wrappers for web page analysis:
 |------|-------------|
 | `check_alt_attributes` | Check alt attributes of all images on a webpage |
 | `check_links` | Check all links on a webpage for broken URLs |
-| `check_page_speed` | Analyze webpage performance using PageSpeed Insights |
-| `check_ogp` | Check OGP, Twitter Card meta tags, canonical URL, and JSON-LD structured data |
+| `check_page_speed` | Analyze webpage performance and accessibility using PageSpeed Insights |
+| `check_ogp` | Check OGP, Twitter Card meta tags, canonical URL, JSON-LD, and favicon |
 | `extract_headings` | Extract H1-H6 heading hierarchy |
 | `check_x_card` | Check X (Twitter) Card settings and validation |
 | `check_site_config` | Check robots.txt and XML sitemap configuration |
+| `check_security_headers` | Check 6 HTTP security headers (HSTS, CSP, etc.) with scoring |
 
 ### Tier 2: Workflow Tools (3 tools)
 
@@ -25,8 +26,8 @@ Single-purpose API wrappers for web page analysis:
 | Tool | Description |
 |------|-------------|
 | `run_seo_audit` | Comprehensive SEO audit with scoring (0-100). Chains 6 tools (OGP, heading, link, speed, alt, site config) into a unified report with 16 auto-verified items. |
-| `run_web_launch_audit` | Pre-launch quality audit. SEO, performance, link integrity, accessibility, and branding checks (14 auto + 4 manual items). |
-| `run_freelance_delivery_audit` | Pre-delivery audit for freelance projects. Quality, SEO, and manual checklist items (7 auto + 6 manual items). |
+| `run_web_launch_audit` | Pre-launch quality audit. Chains 7 tools (OGP, heading, link, speed, alt, site config, security headers) for SEO, performance, accessibility, and branding checks (17 auto + 1 manual items). |
+| `run_freelance_delivery_audit` | Pre-delivery audit for freelance projects. Chains 7 tools for quality, SEO, accessibility, and security checks (10 auto + 3 manual items). |
 
 **Workflow features:**
 - Checklist-driven evaluation with weighted scoring (pass = full weight, warn = half, fail = 0)
@@ -101,22 +102,22 @@ Check all links on a webpage for broken URLs.
 
 #### check_page_speed
 
-Analyze webpage performance using Google PageSpeed Insights.
+Analyze webpage performance and accessibility using Google PageSpeed Insights.
 
 **Parameters:**
 - `url` (required): Target webpage URL
 - `strategy` (optional): `"mobile"` or `"desktop"` (default: `"mobile"`)
 
-**Returns:** Performance score (0-100), Core Web Vitals (FCP, LCP, TBT, CLS, SI, TTI), and top optimization opportunities.
+**Returns:** Performance score (0-100), Core Web Vitals (FCP, LCP, TBT, CLS, SI, TTI), top optimization opportunities, accessibility score, and color-contrast violations (snippet + explanation, up to 10 items).
 
 #### check_ogp
 
-Check Open Graph Protocol, Twitter Card meta tags, canonical URL, and JSON-LD structured data.
+Check Open Graph Protocol, Twitter Card meta tags, canonical URL, JSON-LD structured data, and favicon.
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
-**Returns:** OGP data (title, description, image, url, type, siteName), Twitter Card data with fallback chain resolution, canonical URL (`<link rel="canonical">`), and JSON-LD items (type, validity, raw content).
+**Returns:** OGP data (title, description, image, url, type, siteName), Twitter Card data with fallback chain resolution, canonical URL (`<link rel="canonical">`), JSON-LD items (type, validity, raw content), and favicon data (icon tags, apple-touch-icon detection, `/favicon.ico` existence check).
 
 #### extract_headings
 
@@ -145,6 +146,15 @@ Check robots.txt and XML sitemap configuration for a website.
 
 **Returns:** robots.txt status (exists, content, rules count, Sitemap directives, issues) and sitemap.xml status (exists, URL count, sitemap index detection, issues).
 
+#### check_security_headers
+
+Check HTTP security headers for a website.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** 6 security headers (Strict-Transport-Security, Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy) with pass/warn/fail status, header values, and overall security score (0-100).
+
 ### Tier 2 Tools
 
 #### run_seo_audit
@@ -160,26 +170,26 @@ Comprehensive SEO audit that chains 6 tools into a unified report with scoring.
 
 #### run_web_launch_audit
 
-Pre-launch quality audit for websites about to go live.
+Pre-launch quality audit for websites about to go live. Chains 7 Tier 1 tools (OGP, heading, link, speed, alt, site config, security headers).
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- 14 auto-verified checklist items: meta tags, OGP, Twitter Card, heading structure, robots.txt, sitemap, JSON-LD, performance, LCP, CLS, broken links, alt attributes
-- 4 manual check items: contrast ratio, favicon, OGP brand design, admin password
+- 17 auto-verified checklist items: meta tags, OGP, Twitter Card, heading structure, robots.txt, sitemap, JSON-LD, performance, LCP, CLS, broken links, alt attributes, color contrast, favicon, security headers
+- 1 manual check item: OGP brand design
 - Weighted score (0-100)
 
 #### run_freelance_delivery_audit
 
-Pre-delivery audit for freelance web projects.
+Pre-delivery audit for freelance web projects. Chains 7 Tier 1 tools (OGP, heading, link, speed, alt, site config, security headers).
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- 7 auto-verified checklist items: broken links, page speed, alt attributes, H1, meta title, meta description, OGP image
-- 6 manual check items: contrast, proofreading, favicon, invoice, pricing, admin password
+- 10 auto-verified checklist items: broken links, page speed, alt attributes, H1, meta title, meta description, OGP image, color contrast, favicon, security headers
+- 3 manual check items: proofreading, invoice, pricing
 - Weighted score (0-100)
 
 ## Configuration

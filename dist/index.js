@@ -10,6 +10,7 @@ import { handleSpeedChecker } from "./tools/tier1/speed-checker.js";
 import { handleOgpChecker } from "./tools/tier1/ogp-checker.js";
 import { handleHeadingExtractor } from "./tools/tier1/heading-extractor.js";
 import { handleXCardPreview } from "./tools/tier1/x-card-preview.js";
+import { handleSiteConfigChecker } from "./tools/tier1/site-config-checker.js";
 import { handleSeoAudit } from "./tools/tier2/seo-audit.js";
 import { handleWebLaunchAudit } from "./tools/tier2/web-launch-audit.js";
 import { handleFreelanceDeliveryAudit } from "./tools/tier2/freelance-delivery-audit.js";
@@ -80,7 +81,7 @@ function formatError(error) {
 }
 const server = new McpServer({
     name: "zeronova-lab",
-    version: "0.2.0",
+    version: "0.2.2",
 });
 // Zod schemas with maxLength constraint (mcp-dev-checklist section 2-A)
 const urlSchema = {
@@ -151,7 +152,7 @@ server.tool("check_page_speed", "Analyze webpage performance using Google PageSp
     }
 });
 // Tier 1: ogp-checker
-server.tool("check_ogp", "Check Open Graph Protocol (OGP) and Twitter Card meta tags on a webpage. Returns structured OGP data (title, description, image, url, type, siteName) and Twitter Card data (card, title, description, image) with fallback chain resolution.", urlSchema, async ({ url }) => {
+server.tool("check_ogp", "Check Open Graph Protocol (OGP), Twitter Card meta tags, canonical URL, and JSON-LD structured data on a webpage. Returns structured OGP data (title, description, image, url, type, siteName), Twitter Card data (card, title, description, image), canonical URL (<link rel=\"canonical\">), and JSON-LD items (type, validity, raw content) with fallback chain resolution.", urlSchema, async ({ url }) => {
     try {
         const validUrl = validateUrl(url);
         checkRateLimit("check_ogp");
@@ -201,6 +202,23 @@ server.tool("check_x_card", "Check X (Twitter) Card settings for a webpage. Veri
         };
     }
 });
+// Tier 1: site-config-checker
+server.tool("check_site_config", "Check robots.txt and XML sitemap configuration for a website. Extracts the domain from the given URL, fetches /robots.txt (validates syntax, Sitemap directives, rules count), and fetches sitemap.xml (validates XML structure, URL count, sitemap index detection). Returns structured results for both.", urlSchema, async ({ url }) => {
+    try {
+        const validUrl = validateUrl(url);
+        checkRateLimit("check_site_config");
+        const result = await handleSiteConfigChecker(validUrl);
+        return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+    }
+    catch (error) {
+        return {
+            content: [{ type: "text", text: formatError(error) }],
+            isError: true,
+        };
+    }
+});
 // ---- Tier 2: Workflow tools ----
 /**
  * Build MCP SDK progress notification sender from tool callback extra.
@@ -222,7 +240,7 @@ function buildSendProgress(progressToken, sendFn) {
     };
 }
 // Tier 2: run_seo_audit
-server.tool("run_seo_audit", "Run a comprehensive SEO audit on a webpage. Internally chains 5 tools (OGP checker, heading extractor, link checker, page speed, alt checker) and returns a unified report with a score (0-100), per-item pass/warn/fail status, and improvement suggestions. Manual-check items (robots.txt, sitemap, JSON-LD) are listed separately.", urlSchema, async ({ url }, extra) => {
+server.tool("run_seo_audit", "Run a comprehensive SEO audit on a webpage. Internally chains 6 tools (OGP checker, heading extractor, link checker, page speed, alt checker, site config checker) and returns a unified report with a score (0-100), per-item pass/warn/fail status, and improvement suggestions. All 16 SEO items are auto-verified including canonical URL, JSON-LD, robots.txt, and XML sitemap.", urlSchema, async ({ url }, extra) => {
     try {
         const validUrl = validateUrl(url);
         checkRateLimit("run_seo_audit");
@@ -248,7 +266,7 @@ server.tool("run_seo_audit", "Run a comprehensive SEO audit on a webpage. Intern
     }
 });
 // Tier 2: run_web_launch_audit
-server.tool("run_web_launch_audit", "Run a pre-launch quality audit on a webpage. Checks SEO settings, performance (Core Web Vitals), link integrity, alt attributes, and OGP/Twitter Card configuration. Returns a score (0-100) with per-item results. Also lists manual-check items for branding, accessibility, and security.", urlSchema, async ({ url }, extra) => {
+server.tool("run_web_launch_audit", "Run a pre-launch quality audit on a webpage. Internally chains 6 tools (OGP checker, heading extractor, link checker, page speed, alt checker, site config checker) and checks SEO settings (meta tags, canonical URL, JSON-LD, robots.txt, sitemap.xml), performance (Core Web Vitals), link integrity, alt attributes, and OGP/Twitter Card configuration. Returns a score (0-100) with per-item results. Also lists manual-check items for branding, accessibility, and security.", urlSchema, async ({ url }, extra) => {
     try {
         const validUrl = validateUrl(url);
         checkRateLimit("run_web_launch_audit");
