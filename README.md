@@ -1,6 +1,6 @@
 # ZERONOVA LAB MCP Server
 
-MCP Server for [ZERONOVA LAB](https://zeronova-lab.com) tools — SEO audit, link checking, OGP validation, and more for AI agents.
+MCP Server for [ZERONOVA LAB](https://zeronova-lab.com) tools — SEO audit, link checking, OGP validation, config file generation, and more for AI agents.
 
 ## Features
 
@@ -34,6 +34,24 @@ Single-purpose API wrappers for web page analysis:
 - Partial failure resilience — individual tool failures don't stop the workflow
 - Progress reporting via MCP `notifications/progress` protocol
 - Bot-blocked links (e.g. X/Twitter 403) are distinguished from true broken links
+
+### Tier 3: Config File Generation Tools (5 tools)
+
+"Config as a Tool" — AI agents can safely generate validated configuration files:
+
+| Tool | Description |
+|------|-------------|
+| `generate_robots_txt` | Generate a valid robots.txt file from structured input (sitemap URL, disallow/allow paths, user-agent, crawl-delay) |
+| `generate_sitemap_xml` | Generate a valid XML sitemap from URL list (up to 50,000 entries with lastmod, changefreq, priority) |
+| `generate_htaccess` | Generate an Apache .htaccess file with redirect rules (301/302/307/308), gzip compression, cache control, force HTTPS, trailing slash removal |
+| `generate_jsonld` | Generate Schema.org-compliant JSON-LD structured data (16 schema types supported) |
+| `generate_meta_tags` | Generate SEO-optimized HTML meta tags (title, description, keywords, OGP, Twitter Card, canonical URL) with SEO analysis |
+
+**Generation features:**
+- Output validation per file format (robots.txt directives, XML structure, Apache syntax, JSON parseability, HTML escaping)
+- Injection prevention (RewriteRule metacharacter blocking, XML entity escaping, `</script>` XSS prevention, HTML attribute escaping)
+- No browser-dependent APIs — safe for Node.js / MCP execution
+- 10-second timeout safety net
 
 ## Installation
 
@@ -191,6 +209,75 @@ Pre-delivery audit for freelance web projects. Chains 7 Tier 1 tools (OGP, headi
 - 10 auto-verified checklist items: broken links, page speed, alt attributes, H1, meta title, meta description, OGP image, color contrast, favicon, security headers
 - 3 manual check items: proofreading, invoice, pricing
 - Weighted score (0-100)
+
+### Tier 3 Tools
+
+#### generate_robots_txt
+
+Generate a valid robots.txt file from structured input.
+
+**Parameters:**
+- `sitemapUrl` (optional): Sitemap URL (must start with http:// or https://)
+- `disallowPaths` (optional): Paths to block from crawling (max 100)
+- `allowPaths` (optional): Paths to allow crawling (max 100)
+- `userAgent` (optional): Target user-agent (default: `"*"`)
+- `crawlDelay` (optional): Crawl-delay in seconds (0-60)
+
+**Returns:** Generated robots.txt content, line count, and validation results. Path sanitization removes control characters and ensures leading slash.
+
+#### generate_sitemap_xml
+
+Generate a valid XML sitemap from a list of URLs.
+
+**Parameters:**
+- `urls` (required): Array of URL entries (1-50,000), each with:
+  - `url` (required): Page URL
+  - `lastmod` (optional): Last modification date (YYYY-MM-DD or W3C datetime)
+  - `changefreq` (optional): Expected change frequency
+  - `priority` (optional): URL priority (0.0-1.0)
+
+**Returns:** Generated XML sitemap content, URL count, byte size, and validation results. XML special characters are safely escaped as entities.
+
+#### generate_htaccess
+
+Generate an Apache .htaccess file with redirect rules, cache control, and compression.
+
+**Parameters:**
+- `redirectRules` (optional): Redirect rules (max 100), each with `from`, `to`, and optional `statusCode` (301/302/307/308)
+- `cacheControl` (optional): Cache rules per file extension (max 20), each with `extension` and `maxAge`
+- `compressionEnabled` (optional): Enable gzip compression
+- `forceHttps` (optional): Add HTTP to HTTPS redirect
+- `removeTrailingSlash` (optional): Add trailing slash removal rule
+
+**Returns:** Generated .htaccess content, line count, and validation results. Injection prevention blocks backtick execution, `$()` substitution, `%{ENV:}` injection, newline injection, and null bytes in RewriteRule patterns.
+
+#### generate_jsonld
+
+Generate Schema.org-compliant JSON-LD structured data.
+
+**Parameters:**
+- `schemaType` (required): Schema.org type (Article, BlogPosting, Product, Organization, Person, LocalBusiness, WebSite, WebPage, FAQPage, BreadcrumbList, SoftwareApplication, Event, Recipe, VideoObject, HowTo, Course)
+- `data` (required): Schema.org properties as key-value pairs
+- `includeGraph` (optional): Wrap output in `@graph` array
+
+**Returns:** Generated JSON-LD content (raw JSON + `<script>` tag), schema type, and validation results (JSON parseability, required fields check, type validation). Uses `JSON.stringify` for safe serialization with `</script>` XSS prevention.
+
+#### generate_meta_tags
+
+Generate SEO-optimized HTML meta tags.
+
+**Parameters:**
+- `title` (required): Page title (recommended: 30-60 characters)
+- `description` (required): Meta description (recommended: 70-160 characters)
+- `keywords` (optional): SEO keywords (max 30)
+- `ogpData` (optional): Open Graph Protocol data (title, description, image, url, type, siteName, locale)
+- `twitterCard` (optional): Twitter Card data (card, site, creator, title, description, image)
+- `canonicalUrl` (optional): Canonical URL
+- `charset` (optional): Character encoding (default: `"UTF-8"`)
+- `viewport` (optional): Viewport content (default: `"width=device-width, initial-scale=1.0"`)
+- `robots` (optional): Robots directive
+
+**Returns:** Generated HTML meta tags, tag count, SEO analysis (title/description length status), and validation results. HTML attribute escaping prevents injection.
 
 ## Configuration
 

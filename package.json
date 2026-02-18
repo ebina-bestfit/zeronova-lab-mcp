@@ -1,7 +1,7 @@
 {
   "name": "zeronova-lab-mcp",
-  "version": "0.3.0",
-  "description": "MCP Server for ZERONOVA LAB tools — SEO audit, link checking, OGP validation, and more for AI agents",
+  "version": "0.4.0",
+  "description": "MCP Server for ZERONOVA LAB tools — SEO audit, link checking, OGP validation, config file generation, and more for AI agents",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -28,7 +28,13 @@
     "accessibility",
     "workflow",
     "audit",
-    "seo-audit"
+    "seo-audit",
+    "robots-txt",
+    "sitemap",
+    "htaccess",
+    "json-ld",
+    "meta-tags",
+    "config-generator"
   ],
   "author": "Zeronova",
   "license": "MIT",

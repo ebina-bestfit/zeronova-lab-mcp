@@ -16,6 +16,11 @@ import { handleSecurityHeadersChecker } from "./tools/tier1/security-headers-che
 import { handleSeoAudit } from "./tools/tier2/seo-audit.js";
 import { handleWebLaunchAudit } from "./tools/tier2/web-launch-audit.js";
 import { handleFreelanceDeliveryAudit } from "./tools/tier2/freelance-delivery-audit.js";
+import { handleGenerateRobotsTxt } from "./tools/tier3/robots-txt-generator.js";
+import { handleGenerateSitemapXml } from "./tools/tier3/sitemap-xml-generator.js";
+import { handleGenerateHtaccess } from "./tools/tier3/htaccess-generator.js";
+import { handleGenerateJsonLd } from "./tools/tier3/jsonld-generator.js";
+import { handleGenerateMetaTags } from "./tools/tier3/meta-tag-generator.js";
 
 const rateLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000 });
 
@@ -101,7 +106,7 @@ function formatError(error: unknown): string {
 
 const server = new McpServer({
   name: "zeronova-lab",
-  version: "0.3.0",
+  version: "0.4.0",
 });
 
 // Zod schemas with maxLength constraint (mcp-dev-checklist section 2-A)
@@ -418,6 +423,305 @@ server.tool(
         },
       );
       const result = await handleFreelanceDeliveryAudit(validUrl, onProgress, sendProgress);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// ---- Tier 3: Config file generation tools ----
+
+/**
+ * Tier 3 generation timeout (checklist 2-A: 生成処理 → 10秒).
+ * Tier 3 tools are synchronous (pure string generation), so true preemptive
+ * timeout is not possible without worker_threads. Input size constraints
+ * (max 50K URLs, max 100 paths, etc.) already bound execution time.
+ * This post-hoc check serves as a safety net for unexpected edge cases.
+ */
+const TIER3_TIMEOUT_MS = 10_000;
+
+function checkTier3Timeout(startMs: number, toolName: string): void {
+  const elapsed = Date.now() - startMs;
+  if (elapsed > TIER3_TIMEOUT_MS) {
+    throw new Error(
+      `${toolName} generation exceeded timeout (${elapsed}ms > ${TIER3_TIMEOUT_MS}ms). Try reducing the input size.`,
+    );
+  }
+}
+
+// Tier 3: generate_robots_txt
+server.tool(
+  "generate_robots_txt",
+  'Generate a valid robots.txt file from structured input. Provide a sitemap URL, disallow/allow paths (up to 100 each), optional user-agent and crawl-delay. Returns the generated robots.txt content with line count and validation results. Example input: { "sitemapUrl": "https://example.com/sitemap.xml", "disallowPaths": ["/admin/", "/tmp/"], "allowPaths": ["/admin/public/"] }',
+  {
+    sitemapUrl: z
+      .string()
+      .max(2048)
+      .optional()
+      .describe("Sitemap URL to include (must start with http:// or https://)"),
+    disallowPaths: z
+      .array(z.string().max(2048))
+      .max(100)
+      .optional()
+      .describe("Paths to block from crawling (max 100 paths). Each path should start with /"),
+    allowPaths: z
+      .array(z.string().max(2048))
+      .max(100)
+      .optional()
+      .describe("Paths to explicitly allow crawling (max 100 paths). Each path should start with /"),
+    userAgent: z
+      .string()
+      .max(200)
+      .optional()
+      .describe('User-agent to target (default: "*" for all crawlers)'),
+    crawlDelay: z
+      .number()
+      .min(0)
+      .max(60)
+      .optional()
+      .describe("Crawl-delay in seconds (0-60). Most search engines ignore this except Bing/Yandex."),
+  },
+  async (params) => {
+    try {
+      checkRateLimit("generate_robots_txt");
+      const start = Date.now();
+      const result = handleGenerateRobotsTxt(params);
+      checkTier3Timeout(start, "generate_robots_txt");
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 3: generate_sitemap_xml
+server.tool(
+  "generate_sitemap_xml",
+  'Generate a valid XML sitemap from a list of URLs. Each URL entry can include optional lastmod (YYYY-MM-DD), changefreq (always/hourly/daily/weekly/monthly/yearly/never), and priority (0.0-1.0). Returns well-formed sitemap XML with URL count and byte size. Maximum 50,000 URLs per sitemap. Example input: { "urls": [{ "url": "https://example.com/", "lastmod": "2026-02-18", "changefreq": "weekly", "priority": 1.0 }] }',
+  {
+    urls: z
+      .array(
+        z.object({
+          url: z.string().max(2048).describe("Page URL (must start with http:// or https://)"),
+          lastmod: z
+            .string()
+            .max(30)
+            .optional()
+            .describe("Last modification date (YYYY-MM-DD or W3C datetime format)"),
+          changefreq: z
+            .enum(["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"])
+            .optional()
+            .describe("Expected change frequency"),
+          priority: z
+            .number()
+            .min(0)
+            .max(1)
+            .optional()
+            .describe("URL priority relative to other URLs on the site (0.0-1.0)"),
+        }),
+      )
+      .min(1)
+      .max(50000)
+      .describe("Array of URL entries to include in the sitemap (1-50,000 entries)"),
+  },
+  async ({ urls }) => {
+    try {
+      checkRateLimit("generate_sitemap_xml");
+      const start = Date.now();
+      const result = handleGenerateSitemapXml({ urls });
+      checkTier3Timeout(start, "generate_sitemap_xml");
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 3: generate_htaccess
+server.tool(
+  "generate_htaccess",
+  'Generate a valid Apache .htaccess file with redirect rules, cache control, and gzip compression settings. Redirect rules support 301/302/307/308 status codes with RewriteRule syntax. Includes injection prevention for RewriteRule patterns. Example input: { "redirectRules": [{ "from": "/old-page", "to": "/new-page", "statusCode": 301 }], "compressionEnabled": true, "forceHttps": true }',
+  {
+    redirectRules: z
+      .array(
+        z.object({
+          from: z.string().max(2048).describe("Source path (e.g., /old-page)"),
+          to: z.string().max(2048).describe("Destination path or URL (e.g., /new-page or https://example.com/new)"),
+          statusCode: z
+            .number()
+            .min(301)
+            .max(308)
+            .optional()
+            .describe("HTTP redirect status code: 301 (permanent), 302 (temporary), 307, or 308. Default: 301"),
+        }),
+      )
+      .max(100)
+      .optional()
+      .describe("Redirect rules (max 100). Each rule maps a source path to a destination."),
+    cacheControl: z
+      .array(
+        z.object({
+          extension: z.string().max(20).describe("File extension without dot (e.g., 'css', 'js', 'png')"),
+          maxAge: z
+            .number()
+            .min(0)
+            .max(31536000)
+            .describe("Cache duration in seconds (max 31536000 = 1 year)"),
+        }),
+      )
+      .max(20)
+      .optional()
+      .describe("Cache-Control rules per file extension"),
+    compressionEnabled: z
+      .boolean()
+      .optional()
+      .describe("Enable gzip compression for text/HTML/CSS/JS/JSON/XML/SVG (default: false)"),
+    forceHttps: z
+      .boolean()
+      .optional()
+      .describe("Add HTTP to HTTPS redirect rule (default: false)"),
+    removeTrailingSlash: z
+      .boolean()
+      .optional()
+      .describe("Add trailing slash removal rule (default: false)"),
+  },
+  async (params) => {
+    try {
+      checkRateLimit("generate_htaccess");
+      const start = Date.now();
+      const result = handleGenerateHtaccess(params);
+      checkTier3Timeout(start, "generate_htaccess");
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 3: generate_jsonld
+server.tool(
+  "generate_jsonld",
+  'Generate Schema.org-compliant JSON-LD structured data. Supports 16 schema types: Article, BlogPosting, Product, Organization, Person, LocalBusiness, WebSite, WebPage, FAQPage, BreadcrumbList, SoftwareApplication, Event, Recipe, VideoObject, HowTo, Course. Returns both raw JSON and a ready-to-use <script> tag. Validates required fields per schema type. Example input: { "schemaType": "Article", "data": { "headline": "My Article", "author": { "@type": "Person", "name": "Author" }, "datePublished": "2026-02-18" } }',
+  {
+    schemaType: z
+      .string()
+      .max(100)
+      .describe("Schema.org type (e.g., Article, BlogPosting, Product, Organization, Person, LocalBusiness, WebSite, FAQPage, BreadcrumbList, SoftwareApplication, Event, etc.)"),
+    data: z
+      .record(z.string(), z.unknown())
+      .describe("Schema.org properties for the specified type. Provide all relevant fields as key-value pairs."),
+    includeGraph: z
+      .boolean()
+      .optional()
+      .describe("Wrap output in @graph array for multi-item structures (default: false)"),
+  },
+  async (params) => {
+    try {
+      checkRateLimit("generate_jsonld");
+      const start = Date.now();
+      const result = handleGenerateJsonLd(params);
+      checkTier3Timeout(start, "generate_jsonld");
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 3: generate_meta_tags
+server.tool(
+  "generate_meta_tags",
+  'Generate SEO-optimized HTML meta tags including title, description, keywords, Open Graph, Twitter Card, and canonical URL. Returns the generated HTML with tag count, SEO analysis (title/description length status), and validation. Example input: { "title": "My Page Title", "description": "A comprehensive description of the page content", "ogpData": { "image": "https://example.com/og.png", "type": "website" }, "twitterCard": { "card": "summary_large_image" }, "canonicalUrl": "https://example.com/page" }',
+  {
+    title: z
+      .string()
+      .max(200)
+      .describe("Page title (recommended: 30-60 characters for SEO)"),
+    description: z
+      .string()
+      .max(500)
+      .describe("Meta description (recommended: 70-160 characters for SEO)"),
+    keywords: z
+      .array(z.string().max(100))
+      .max(30)
+      .optional()
+      .describe("SEO keywords (max 30 keywords, each max 100 chars)"),
+    ogpData: z
+      .object({
+        title: z.string().max(200).optional().describe("OGP title (falls back to page title)"),
+        description: z.string().max(500).optional().describe("OGP description (falls back to page description)"),
+        image: z.string().max(2048).optional().describe("OGP image URL (recommended: 1200x630px)"),
+        url: z.string().max(2048).optional().describe("Canonical URL for OGP"),
+        type: z.string().max(50).optional().describe('OGP type (e.g., "website", "article")'),
+        siteName: z.string().max(200).optional().describe("Site name for OGP"),
+        locale: z.string().max(20).optional().describe('Locale (e.g., "ja_JP", "en_US")'),
+      })
+      .optional()
+      .describe("Open Graph Protocol data"),
+    twitterCard: z
+      .object({
+        card: z.string().max(50).optional().describe('Card type: "summary", "summary_large_image", "app", "player"'),
+        site: z.string().max(100).optional().describe("Twitter @username of the site"),
+        creator: z.string().max(100).optional().describe("Twitter @username of the content creator"),
+        title: z.string().max(200).optional().describe("Twitter card title (falls back to page title)"),
+        description: z.string().max(500).optional().describe("Twitter card description (falls back to page description)"),
+        image: z.string().max(2048).optional().describe("Twitter card image URL"),
+      })
+      .optional()
+      .describe("Twitter Card data"),
+    canonicalUrl: z
+      .string()
+      .max(2048)
+      .optional()
+      .describe("Canonical URL (must start with http:// or https://)"),
+    charset: z
+      .string()
+      .max(20)
+      .optional()
+      .describe('Character encoding (default: "UTF-8")'),
+    viewport: z
+      .string()
+      .max(200)
+      .optional()
+      .describe('Viewport meta content (default: "width=device-width, initial-scale=1.0")'),
+    robots: z
+      .string()
+      .max(100)
+      .optional()
+      .describe('Robots directive (e.g., "index, follow", "noindex, nofollow")'),
+  },
+  async (params) => {
+    try {
+      checkRateLimit("generate_meta_tags");
+      const start = Date.now();
+      const result = handleGenerateMetaTags(params);
+      checkTier3Timeout(start, "generate_meta_tags");
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };

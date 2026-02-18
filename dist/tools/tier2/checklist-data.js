@@ -35,6 +35,12 @@ function getSiteConfigData(results) {
         return null;
     return r.data;
 }
+function getSecurityHeadersData(results) {
+    const r = results.securityHeaders;
+    if (!r || "error" in r)
+        return null;
+    return r.data;
+}
 function toolError(toolName) {
     return { status: "error", detail: `${toolName}のデータ取得に失敗` };
 }
@@ -341,6 +347,102 @@ function evalH1Exists(results) {
         return { status: "pass", detail: `H1: "${h1s[0].text}"` };
     return { status: "fail", detail: "H1タグが存在しません" };
 }
+// ---- Phase 2.7: New evaluation functions ----
+function evalFavicon(results) {
+    const ogp = getOgpData(results);
+    if (!ogp)
+        return toolError("OGPチェッカー");
+    const fav = ogp.favicon;
+    if (!fav.hasFavicon) {
+        return {
+            status: "fail",
+            detail: "ファビコンが未設定（<link rel=\"icon\"> がなく、/favicon.ico も見つかりません）",
+        };
+    }
+    const parts = [];
+    if (fav.icons.length > 0) {
+        const iconInfo = fav.icons.slice(0, 3).map((i) => {
+            const sizeStr = i.sizes ? ` ${i.sizes}` : "";
+            return `${i.rel}${sizeStr}: ${i.href}`;
+        });
+        parts.push(iconInfo.join("、"));
+    }
+    if (fav.faviconIcoExists === true) {
+        parts.push("/favicon.ico 存在確認");
+    }
+    if (!fav.hasAppleTouchIcon) {
+        return {
+            status: "warn",
+            detail: `ファビコン設定済み（${parts.join("、")}）。apple-touch-icon が未設定`,
+        };
+    }
+    return {
+        status: "pass",
+        detail: `ファビコン設定済み（${parts.join("、")}）`,
+    };
+}
+function evalColorContrast(results) {
+    const speed = getSpeedData(results);
+    if (!speed)
+        return toolError("ページ速度チェッカー");
+    const acc = speed.accessibility;
+    if (!acc || acc.colorContrast.score === null) {
+        return {
+            status: "warn",
+            detail: "コントラスト情報を取得できませんでした",
+        };
+    }
+    if (acc.colorContrast.score === 1) {
+        return {
+            status: "pass",
+            detail: "カラーコントラストがWCAG基準を満たしています",
+        };
+    }
+    const violations = acc.colorContrast.violations;
+    if (violations.length === 0) {
+        return {
+            status: "warn",
+            detail: `コントラスト比に問題があります（スコア: ${Math.round(acc.colorContrast.score * 100)}%）`,
+        };
+    }
+    const snippets = violations
+        .slice(0, 3)
+        .map((v) => v.snippet.slice(0, 60))
+        .join("、");
+    return {
+        status: "fail",
+        detail: `${violations.length}件のコントラスト違反: ${snippets}${violations.length > 3 ? ` 他${violations.length - 3}件` : ""}`,
+    };
+}
+function evalSecurityHeaders(results) {
+    const sec = getSecurityHeadersData(results);
+    if (!sec)
+        return toolError("セキュリティヘッダーチェッカー");
+    const score = sec.summary.score;
+    const missing = sec.headers
+        .filter((h) => !h.present)
+        .map((h) => h.name);
+    const failed = sec.headers
+        .filter((h) => h.status === "fail")
+        .map((h) => h.name);
+    if (score >= 80 && failed.length === 0) {
+        return {
+            status: "pass",
+            detail: `セキュリティヘッダースコア: ${score}点（${sec.summary.present}/${sec.summary.total}ヘッダー設定済み）`,
+        };
+    }
+    if (score >= 50) {
+        const info = missing.length > 0 ? `未設定: ${missing.join(", ")}` : "";
+        return {
+            status: "warn",
+            detail: `セキュリティヘッダースコア: ${score}点。${info}`,
+        };
+    }
+    return {
+        status: "fail",
+        detail: `セキュリティヘッダースコア: ${score}点。未設定: ${missing.join(", ")}`,
+    };
+}
 // ---- SEO Audit Checklist ----
 export const seoAuditChecklist = [
     // メタ情報
@@ -629,9 +731,11 @@ export const webLaunchAuditChecklist = [
     {
         id: "wl-contrast",
         category: "品質",
-        label: "カラーコントラスト比が基準を満たしているか",
+        label: "カラーコントラスト比がWCAG基準を満たしているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "speed",
+        evaluate: evalColorContrast,
     },
     // ブランディング
     {
@@ -639,7 +743,9 @@ export const webLaunchAuditChecklist = [
         category: "ブランディング",
         label: "ファビコンが設定されているか",
         weight: 3,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "ogp",
+        evaluate: evalFavicon,
     },
     {
         id: "wl-og-brand",
@@ -650,11 +756,13 @@ export const webLaunchAuditChecklist = [
     },
     // セキュリティ
     {
-        id: "wl-password",
+        id: "wl-security-headers",
         category: "セキュリティ",
-        label: "管理画面のパスワードが十分に強固か",
+        label: "HTTPセキュリティヘッダーが適切に設定されているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "securityHeaders",
+        evaluate: evalSecurityHeaders,
     },
 ];
 // ---- Freelance Delivery Audit Checklist ----
@@ -701,7 +809,9 @@ export const freelanceDeliveryAuditChecklist = [
         category: "品質確認",
         label: "カラーコントラストがWCAG基準を満たしているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "speed",
+        evaluate: evalColorContrast,
     },
     {
         id: "fl-proofreading",
@@ -743,7 +853,9 @@ export const freelanceDeliveryAuditChecklist = [
         category: "SEO設定",
         label: "ファビコンが設定されているか",
         weight: 3,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "ogp",
+        evaluate: evalFavicon,
     },
     // 納品物
     {
@@ -762,11 +874,13 @@ export const freelanceDeliveryAuditChecklist = [
     },
     // セキュリティ
     {
-        id: "fl-password",
+        id: "fl-security-headers",
         category: "セキュリティ",
-        label: "管理画面やFTPのパスワードを安全に設定したか",
+        label: "HTTPセキュリティヘッダーが適切に設定されているか",
         weight: 5,
-        autoVerifiable: false,
+        autoVerifiable: true,
+        tier1Tool: "securityHeaders",
+        evaluate: evalSecurityHeaders,
     },
 ];
 //# sourceMappingURL=checklist-data.js.map

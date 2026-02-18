@@ -38,6 +38,18 @@ export interface SpeedMetric {
     value: string;
     displayValue: string;
 }
+export interface ContrastViolation {
+    snippet: string;
+    explanation: string;
+}
+export interface AccessibilityResult {
+    score: number | null;
+    colorContrast: {
+        score: number | null;
+        violations: ContrastViolation[];
+        violationCount: number;
+    };
+}
 export interface SpeedCheckerResponse {
     url: string;
     strategy: "mobile" | "desktop";
@@ -54,12 +66,25 @@ export interface SpeedCheckerResponse {
         title: string;
         savings: string;
     }>;
+    accessibility: AccessibilityResult;
     fetchedAt: string;
 }
 export interface JsonLdItem {
     type: string;
     valid: boolean;
     raw: string;
+}
+export interface FaviconItem {
+    rel: string;
+    href: string;
+    type: string;
+    sizes: string;
+}
+export interface FaviconResult {
+    icons: FaviconItem[];
+    hasFavicon: boolean;
+    hasAppleTouchIcon: boolean;
+    faviconIcoExists: boolean | null;
 }
 export interface OgpCheckerResponse {
     ogp: {
@@ -78,6 +103,7 @@ export interface OgpCheckerResponse {
     };
     canonical: string;
     jsonLd: JsonLdItem[];
+    favicon: FaviconResult;
     rawUrl: string;
 }
 export interface SiteConfigRobotsResult {
@@ -110,11 +136,29 @@ export interface HeadingExtractorResponse {
     title: string;
     url: string;
 }
+export interface SecurityHeaderCheck {
+    name: string;
+    present: boolean;
+    value: string | null;
+    status: "pass" | "warn" | "fail";
+    detail: string;
+}
+export interface SecurityHeadersCheckerResponse {
+    headers: SecurityHeaderCheck[];
+    summary: {
+        total: number;
+        present: number;
+        missing: number;
+        score: number;
+    };
+    url: string;
+    checkedUrl: string;
+}
 export interface ApiErrorResponse {
     error: string;
 }
 export type CheckStatus = "pass" | "warn" | "fail" | "error" | "skipped" | "manual";
-export type Tier1ToolName = "ogp" | "headings" | "links" | "speed" | "alt" | "siteConfig";
+export type Tier1ToolName = "ogp" | "headings" | "links" | "speed" | "alt" | "siteConfig" | "securityHeaders";
 export interface CollectedToolResults {
     ogp: {
         data: OgpCheckerResponse;
@@ -143,6 +187,11 @@ export interface CollectedToolResults {
     } | null;
     siteConfig: {
         data: SiteConfigCheckerResponse;
+    } | {
+        error: string;
+    } | null;
+    securityHeaders: {
+        data: SecurityHeadersCheckerResponse;
     } | {
         error: string;
     } | null;

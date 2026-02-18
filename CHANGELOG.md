@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-18
+
+### Added
+
+- 5 Tier 3 config file generation tools ("Config as a Tool" — AI agents can safely generate validated config files):
+  - `generate_robots_txt` — Generate valid robots.txt from structured input (sitemap URL, disallow/allow paths, user-agent, crawl-delay). Output validation ensures only valid directives. Path sanitization removes control characters.
+  - `generate_sitemap_xml` — Generate valid XML sitemap from URL list (up to 50,000 entries with optional lastmod, changefreq, priority). XML special characters safely escaped as entities. Validates URL format, date format, changefreq values, and priority range.
+  - `generate_htaccess` — Generate valid Apache .htaccess with redirect rules (301/302/307/308), gzip compression, cache control, force HTTPS, and trailing slash removal. Injection prevention: blocks backtick execution, `$()` substitution, `%{ENV:}` injection, newline injection, and null bytes in RewriteRule patterns.
+  - `generate_jsonld` — Generate Schema.org-compliant JSON-LD structured data supporting 16 schema types. Uses JSON.stringify for safe serialization. Validates required fields per type. Returns both raw JSON and `<script>` tag with XSS prevention.
+  - `generate_meta_tags` — Generate SEO-optimized HTML meta tags (title, description, keywords, OGP, Twitter Card, canonical URL, robots). HTML attribute escaping prevents injection. Includes SEO analysis with title/description length status.
+- All Tier 3 tools follow mcp-dev-checklist.md section 2-D: output validation, injection prevention, no browser-dependent APIs, runtime input validation, rate limiting, error handling
+
 ## [0.3.0] - 2026-02-18
 
 ### Added

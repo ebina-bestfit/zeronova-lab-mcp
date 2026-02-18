@@ -9,7 +9,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 // Checklist 2-A: 1 retry with 2s wait on network/server error
 const RETRY_DELAY_MS = 2_000;
 // Checklist 2-B: User-Agent format = ZeronovaLabMCP/{version}
-const USER_AGENT = "ZeronovaLabMCP/0.2.2";
+const USER_AGENT = "ZeronovaLabMCP/0.3.0";
 export class ApiError extends Error {
     statusCode;
     constructor(statusCode, message) {
@@ -131,6 +131,18 @@ const speedMetricSchema = z.object({
     value: z.string(),
     displayValue: z.string(),
 });
+const contrastViolationSchema = z.object({
+    snippet: z.string(),
+    explanation: z.string(),
+});
+const accessibilityResultSchema = z.object({
+    score: z.union([z.number(), z.null()]),
+    colorContrast: z.object({
+        score: z.union([z.number(), z.null()]),
+        violations: z.array(contrastViolationSchema),
+        violationCount: z.number(),
+    }),
+});
 const speedCheckerResponseSchema = z.object({
     url: z.string(),
     strategy: z.enum(["mobile", "desktop"]),
@@ -147,12 +159,25 @@ const speedCheckerResponseSchema = z.object({
         title: z.string(),
         savings: z.string(),
     })),
+    accessibility: accessibilityResultSchema,
     fetchedAt: z.string(),
 });
 const jsonLdItemSchema = z.object({
     type: z.string(),
     valid: z.boolean(),
     raw: z.string(),
+});
+const faviconItemSchema = z.object({
+    rel: z.string(),
+    href: z.string(),
+    type: z.string(),
+    sizes: z.string(),
+});
+const faviconResultSchema = z.object({
+    icons: z.array(faviconItemSchema),
+    hasFavicon: z.boolean(),
+    hasAppleTouchIcon: z.boolean(),
+    faviconIcoExists: z.union([z.boolean(), z.null()]),
 });
 const ogpCheckerResponseSchema = z.object({
     ogp: z.object({
@@ -171,6 +196,7 @@ const ogpCheckerResponseSchema = z.object({
     }),
     canonical: z.string(),
     jsonLd: z.array(jsonLdItemSchema),
+    favicon: faviconResultSchema,
     rawUrl: z.string(),
 });
 const siteConfigCheckerResponseSchema = z.object({
@@ -199,6 +225,23 @@ const headingExtractorResponseSchema = z.object({
     })),
     title: z.string(),
     url: z.string(),
+});
+const securityHeadersCheckerResponseSchema = z.object({
+    headers: z.array(z.object({
+        name: z.string(),
+        present: z.boolean(),
+        value: z.union([z.string(), z.null()]),
+        status: z.enum(["pass", "warn", "fail"]),
+        detail: z.string(),
+    })),
+    summary: z.object({
+        total: z.number(),
+        present: z.number(),
+        missing: z.number(),
+        score: z.number(),
+    }),
+    url: z.string(),
+    checkedUrl: z.string(),
 });
 /**
  * Validate API response against Zod schema.
@@ -235,5 +278,9 @@ export async function extractHeadings(url) {
 export async function checkSiteConfig(url) {
     const raw = await fetchApi("site-config-checker", { url });
     return validateResponse(raw, siteConfigCheckerResponseSchema, "site-config-checker");
+}
+export async function checkSecurityHeaders(url) {
+    const raw = await fetchApi("security-headers-checker", { url });
+    return validateResponse(raw, securityHeadersCheckerResponseSchema, "security-headers-checker");
 }
 //# sourceMappingURL=client.js.map

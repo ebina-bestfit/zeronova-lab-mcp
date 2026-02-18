@@ -11,6 +11,7 @@ import { handleOgpChecker } from "./tools/tier1/ogp-checker.js";
 import { handleHeadingExtractor } from "./tools/tier1/heading-extractor.js";
 import { handleXCardPreview } from "./tools/tier1/x-card-preview.js";
 import { handleSiteConfigChecker } from "./tools/tier1/site-config-checker.js";
+import { handleSecurityHeadersChecker } from "./tools/tier1/security-headers-checker.js";
 import { handleSeoAudit } from "./tools/tier2/seo-audit.js";
 import { handleWebLaunchAudit } from "./tools/tier2/web-launch-audit.js";
 import { handleFreelanceDeliveryAudit } from "./tools/tier2/freelance-delivery-audit.js";
@@ -81,7 +82,7 @@ function formatError(error) {
 }
 const server = new McpServer({
     name: "zeronova-lab",
-    version: "0.2.2",
+    version: "0.3.0",
 });
 // Zod schemas with maxLength constraint (mcp-dev-checklist section 2-A)
 const urlSchema = {
@@ -219,6 +220,23 @@ server.tool("check_site_config", "Check robots.txt and XML sitemap configuration
         };
     }
 });
+// Tier 1: security-headers-checker (Phase 2.7)
+server.tool("check_security_headers", "Check HTTP security headers on a webpage. Inspects 6 key security headers: Strict-Transport-Security (HSTS), Content-Security-Policy (CSP), X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and Permissions-Policy. Returns each header's presence, value, and pass/warn/fail status with specific recommendations, plus an overall security score (0-100).", urlSchema, async ({ url }) => {
+    try {
+        const validUrl = validateUrl(url);
+        checkRateLimit("check_security_headers");
+        const result = await handleSecurityHeadersChecker(validUrl);
+        return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+    }
+    catch (error) {
+        return {
+            content: [{ type: "text", text: formatError(error) }],
+            isError: true,
+        };
+    }
+});
 // ---- Tier 2: Workflow tools ----
 /**
  * Build MCP SDK progress notification sender from tool callback extra.
@@ -240,7 +258,7 @@ function buildSendProgress(progressToken, sendFn) {
     };
 }
 // Tier 2: run_seo_audit
-server.tool("run_seo_audit", "Run a comprehensive SEO audit on a webpage. Internally chains 6 tools (OGP checker, heading extractor, link checker, page speed, alt checker, site config checker) and returns a unified report with a score (0-100), per-item pass/warn/fail status, and improvement suggestions. All 16 SEO items are auto-verified including canonical URL, JSON-LD, robots.txt, and XML sitemap.", urlSchema, async ({ url }, extra) => {
+server.tool("run_seo_audit", "Run a comprehensive SEO audit on a webpage. Internally chains 6 tools (OGP checker, heading extractor, link checker, page speed with accessibility, alt checker, site config checker) and returns a unified report with a score (0-100), per-item pass/warn/fail status, and improvement suggestions. All 16 SEO items are auto-verified including canonical URL, JSON-LD, robots.txt, and XML sitemap.", urlSchema, async ({ url }, extra) => {
     try {
         const validUrl = validateUrl(url);
         checkRateLimit("run_seo_audit");
@@ -266,7 +284,7 @@ server.tool("run_seo_audit", "Run a comprehensive SEO audit on a webpage. Intern
     }
 });
 // Tier 2: run_web_launch_audit
-server.tool("run_web_launch_audit", "Run a pre-launch quality audit on a webpage. Internally chains 6 tools (OGP checker, heading extractor, link checker, page speed, alt checker, site config checker) and checks SEO settings (meta tags, canonical URL, JSON-LD, robots.txt, sitemap.xml), performance (Core Web Vitals), link integrity, alt attributes, and OGP/Twitter Card configuration. Returns a score (0-100) with per-item results. Also lists manual-check items for branding, accessibility, and security.", urlSchema, async ({ url }, extra) => {
+server.tool("run_web_launch_audit", "Run a pre-launch quality audit on a webpage. Internally chains 7 tools (OGP checker, heading extractor, link checker, page speed with accessibility, alt checker, site config checker, security headers checker) and checks SEO settings, performance (Core Web Vitals), link integrity, alt attributes, color contrast, favicon, and security headers. Returns a score (0-100) with per-item results.", urlSchema, async ({ url }, extra) => {
     try {
         const validUrl = validateUrl(url);
         checkRateLimit("run_web_launch_audit");
@@ -292,7 +310,7 @@ server.tool("run_web_launch_audit", "Run a pre-launch quality audit on a webpage
     }
 });
 // Tier 2: run_freelance_delivery_audit
-server.tool("run_freelance_delivery_audit", "Run a pre-delivery quality audit for freelance web projects. Checks link integrity, page speed, alt attributes, meta tags, and OGP configuration. Returns a score (0-100) with per-item results. Also lists manual-check items for contrast, proofreading, invoicing, and security.", urlSchema, async ({ url }, extra) => {
+server.tool("run_freelance_delivery_audit", "Run a pre-delivery quality audit for freelance web projects. Checks link integrity, page speed, alt attributes, color contrast, meta tags, OGP configuration, favicon, and security headers. Returns a score (0-100) with per-item results. Also lists manual-check items for proofreading and invoicing.", urlSchema, async ({ url }, extra) => {
     try {
         const validUrl = validateUrl(url);
         checkRateLimit("run_freelance_delivery_audit");

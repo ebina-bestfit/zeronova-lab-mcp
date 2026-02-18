@@ -10,16 +10,17 @@
  * - Workflow timeout: 60 seconds
  * - Progress via MCP SDK notifications (sendProgress) + stderr (onProgress)
  */
-import { checkOgp, checkLinks, checkSpeed, extractHeadings, checkAltAttributes, checkSiteConfig, } from "../../client.js";
+import { checkOgp, checkLinks, checkSpeed, extractHeadings, checkAltAttributes, checkSiteConfig, checkSecurityHeaders, } from "../../client.js";
 // Checklist 2-C: Workflow timeout = 60 seconds
 const WORKFLOW_TIMEOUT_MS = 60_000;
 const TOOL_DISPLAY_NAMES = {
     ogp: "OGPチェック中",
     headings: "見出し構造チェック中",
     links: "リンクチェック中",
-    speed: "ページ速度チェック中",
+    speed: "ページ速度・アクセシビリティチェック中",
     alt: "alt属性チェック中",
     siteConfig: "サイト設定チェック中",
+    securityHeaders: "セキュリティヘッダーチェック中",
 };
 /**
  * Execute a single Tier 1 tool and return its result.
@@ -41,6 +42,8 @@ async function executeTier1Tool(url, tool) {
                 return { data: await checkAltAttributes(url) };
             case "siteConfig":
                 return { data: await checkSiteConfig(url) };
+            case "securityHeaders":
+                return { data: await checkSecurityHeaders(url) };
         }
     }
     catch (error) {
@@ -93,6 +96,16 @@ function buildToolResultSummary(tool, result) {
                         valid: item.valid,
                     })),
                     jsonLdCount: d.jsonLd.length,
+                    favicon: {
+                        hasFavicon: d.favicon.hasFavicon,
+                        hasAppleTouchIcon: d.favicon.hasAppleTouchIcon,
+                        faviconIcoExists: d.favicon.faviconIcoExists,
+                        icons: d.favicon.icons.map((i) => ({
+                            rel: i.rel,
+                            href: i.href,
+                            sizes: i.sizes,
+                        })),
+                    },
                 },
             };
         }
@@ -193,6 +206,14 @@ function buildToolResultSummary(tool, result) {
                         ? { opportunities: d.opportunities.slice(0, 5) }
                         : {}),
                     ...(issues.length > 0 ? { issue: issues.join(", ") } : {}),
+                    accessibility: {
+                        score: d.accessibility.score,
+                        colorContrast: {
+                            score: d.accessibility.colorContrast.score,
+                            violationCount: d.accessibility.colorContrast.violationCount,
+                            violations: d.accessibility.colorContrast.violations.slice(0, 5),
+                        },
+                    },
                 },
             };
         }
@@ -245,6 +266,27 @@ function buildToolResultSummary(tool, result) {
                         issues: d.sitemap.issues,
                     },
                     domain: d.domain,
+                },
+            };
+        }
+        case "securityHeaders": {
+            const d = result.data;
+            const allPass = d.headers.every((h) => h.status === "pass");
+            const anyFail = d.headers.some((h) => h.status === "fail");
+            return {
+                status: allPass ? "pass" : anyFail ? "fail" : "warn",
+                details: {
+                    score: d.summary.score,
+                    present: d.summary.present,
+                    missing: d.summary.missing,
+                    total: d.summary.total,
+                    headers: d.headers.map((h) => ({
+                        name: h.name,
+                        present: h.present,
+                        status: h.status,
+                        detail: h.detail,
+                        ...(h.value ? { value: h.value.length > 100 ? h.value.slice(0, 97) + "..." : h.value } : {}),
+                    })),
                 },
             };
         }
@@ -304,6 +346,7 @@ export async function runWorkflow(url, auditType, checkItems, onProgress, sendPr
         "alt",
         "links",
         "siteConfig",
+        "securityHeaders",
         "speed",
     ];
     const toolsToExecute = executionOrder.filter((t) => requiredTools.has(t));
@@ -315,6 +358,7 @@ export async function runWorkflow(url, auditType, checkItems, onProgress, sendPr
         speed: null,
         alt: null,
         siteConfig: null,
+        securityHeaders: null,
     };
     const totalTools = toolsToExecute.length;
     const startMsg = `監査開始: ${totalTools}つのチェックツールを実行します`;
