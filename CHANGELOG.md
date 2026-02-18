@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-02-18
+
+### Fixed
+
+- Speed checker (`check_page_speed`) timeout extended from 15s to 30s to match the upstream PageSpeed Insights API timeout, reducing timeout failures in Tier 2 workflow audits
+
 ## [0.4.0] - 2026-02-18
 
 ### Added

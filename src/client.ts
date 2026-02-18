@@ -15,14 +15,17 @@ const BASE_URL = process.env.ZERONOVA_API_URL
   ? `${process.env.ZERONOVA_API_URL.replace(/\/$/, "")}/api/tools`
   : DEFAULT_BASE_URL;
 
-// Checklist 2-A: Tier 1 timeout = 15 seconds
+// Checklist 2-A: Tier 1 timeout = 15 seconds (default)
 const REQUEST_TIMEOUT_MS = 15_000;
+
+// Speed checker needs longer timeout to match the upstream API (30s)
+const SPEED_CHECKER_TIMEOUT_MS = 30_000;
 
 // Checklist 2-A: 1 retry with 2s wait on network/server error
 const RETRY_DELAY_MS = 2_000;
 
 // Checklist 2-B: User-Agent format = ZeronovaLabMCP/{version}
-const USER_AGENT = "ZeronovaLabMCP/0.4.0";
+const USER_AGENT = "ZeronovaLabMCP/0.4.1";
 
 export class ApiError extends Error {
   constructor(
@@ -57,6 +60,7 @@ function sleep(ms: number): Promise<void> {
 async function fetchApiOnce<T>(
   endpoint: string,
   params: Record<string, string>,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   const url = new URL(`${BASE_URL}/${endpoint}`);
   for (const [key, value] of Object.entries(params)) {
@@ -64,7 +68,7 @@ async function fetchApiOnce<T>(
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url.toString(), {
@@ -92,7 +96,7 @@ async function fetchApiOnce<T>(
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(
         408,
-        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`,
+        `Request timed out after ${timeoutMs / 1000}s`,
       );
     }
     throw new ApiError(
@@ -112,13 +116,14 @@ async function fetchApiOnce<T>(
 async function fetchApi<T>(
   endpoint: string,
   params: Record<string, string>,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   try {
-    return await fetchApiOnce<T>(endpoint, params);
+    return await fetchApiOnce<T>(endpoint, params, timeoutMs);
   } catch (error) {
     if (isRetryableError(error)) {
       await sleep(RETRY_DELAY_MS);
-      return fetchApiOnce<T>(endpoint, params);
+      return fetchApiOnce<T>(endpoint, params, timeoutMs);
     }
     throw error;
   }
@@ -336,7 +341,11 @@ export async function checkSpeed(
   url: string,
   strategy: "mobile" | "desktop" = "mobile",
 ): Promise<SpeedCheckerResponse> {
-  const raw = await fetchApi<unknown>("speed-checker", { url, strategy });
+  const raw = await fetchApi<unknown>(
+    "speed-checker",
+    { url, strategy },
+    SPEED_CHECKER_TIMEOUT_MS,
+  );
   return validateResponse(raw, speedCheckerResponseSchema, "speed-checker");
 }
 

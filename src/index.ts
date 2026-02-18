@@ -106,7 +106,7 @@ function formatError(error: unknown): string {
 
 const server = new McpServer({
   name: "zeronova-lab",
-  version: "0.4.0",
+  version: "0.4.1",
 });
 
 // Zod schemas with maxLength constraint (mcp-dev-checklist section 2-A)

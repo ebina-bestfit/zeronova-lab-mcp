@@ -1,6 +1,6 @@
 {
   "name": "zeronova-lab-mcp",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "MCP Server for ZERONOVA LAB tools — SEO audit, link checking, OGP validation, config file generation, and more for AI agents",
   "type": "module",
   "main": "dist/index.js",
