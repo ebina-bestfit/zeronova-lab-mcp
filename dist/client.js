@@ -4,12 +4,14 @@ const DEFAULT_BASE_URL = "https://zeronova-lab.com/api/tools";
 const BASE_URL = process.env.ZERONOVA_API_URL
     ? `${process.env.ZERONOVA_API_URL.replace(/\/$/, "")}/api/tools`
     : DEFAULT_BASE_URL;
-// Checklist 2-A: Tier 1 timeout = 15 seconds
+// Checklist 2-A: Tier 1 timeout = 15 seconds (default)
 const REQUEST_TIMEOUT_MS = 15_000;
+// Speed checker needs longer timeout to match the upstream API (30s)
+const SPEED_CHECKER_TIMEOUT_MS = 30_000;
 // Checklist 2-A: 1 retry with 2s wait on network/server error
 const RETRY_DELAY_MS = 2_000;
 // Checklist 2-B: User-Agent format = ZeronovaLabMCP/{version}
-const USER_AGENT = "ZeronovaLabMCP/0.4.0";
+const USER_AGENT = "ZeronovaLabMCP/0.4.1";
 export class ApiError extends Error {
     statusCode;
     constructor(statusCode, message) {
@@ -34,13 +36,13 @@ function isRetryableError(error) {
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
-async function fetchApiOnce(endpoint, params) {
+async function fetchApiOnce(endpoint, params, timeoutMs = REQUEST_TIMEOUT_MS) {
     const url = new URL(`${BASE_URL}/${endpoint}`);
     for (const [key, value] of Object.entries(params)) {
         url.searchParams.set(key, value);
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
         const response = await fetch(url.toString(), {
             signal: controller.signal,
@@ -66,7 +68,7 @@ async function fetchApiOnce(endpoint, params) {
         if (error instanceof ApiError)
             throw error;
         if (error instanceof Error && error.name === "AbortError") {
-            throw new ApiError(408, `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+            throw new ApiError(408, `Request timed out after ${timeoutMs / 1000}s`);
         }
         throw new ApiError(500, error instanceof Error ? error.message : "Unknown error");
     }
@@ -79,14 +81,14 @@ async function fetchApiOnce(endpoint, params) {
  * Checklist 2-A: 1 retry with 2s wait on network/server error.
  * 2 failures total → error returned (no infinite retry).
  */
-async function fetchApi(endpoint, params) {
+async function fetchApi(endpoint, params, timeoutMs = REQUEST_TIMEOUT_MS) {
     try {
-        return await fetchApiOnce(endpoint, params);
+        return await fetchApiOnce(endpoint, params, timeoutMs);
     }
     catch (error) {
         if (isRetryableError(error)) {
             await sleep(RETRY_DELAY_MS);
-            return fetchApiOnce(endpoint, params);
+            return fetchApiOnce(endpoint, params, timeoutMs);
         }
         throw error;
     }
@@ -264,7 +266,7 @@ export async function checkLinks(url) {
     return validateResponse(raw, linkCheckerResponseSchema, "link-checker");
 }
 export async function checkSpeed(url, strategy = "mobile") {
-    const raw = await fetchApi("speed-checker", { url, strategy });
+    const raw = await fetchApi("speed-checker", { url, strategy }, SPEED_CHECKER_TIMEOUT_MS);
     return validateResponse(raw, speedCheckerResponseSchema, "speed-checker");
 }
 export async function checkOgp(url) {

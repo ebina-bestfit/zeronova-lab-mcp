@@ -180,6 +180,111 @@ export interface SecurityHeadersCheckerResponse {
   checkedUrl: string;
 }
 
+// Tier 1: cache-checker response (Phase 3.5)
+export interface CacheHeaderResult {
+  name: string;
+  present: boolean;
+  value: string | null;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+  category: "browser" | "cdn" | "validation";
+}
+
+export interface CacheCheckerResponse {
+  headers: CacheHeaderResult[];
+  summary: {
+    total: number;
+    present: number;
+    missing: number;
+    score: number;
+    browserCache: "enabled" | "partial" | "disabled";
+    cdnCache: "hit" | "miss" | "unknown";
+  };
+  url: string;
+  checkedUrl: string;
+}
+
+// Tier 1: schema-checker response (Phase 3.5)
+export interface SchemaProperty {
+  name: string;
+  present: boolean;
+  value?: string;
+  required: boolean;
+}
+
+export interface SchemaResult {
+  type: string;
+  source: "json-ld";
+  properties: SchemaProperty[];
+  status: "pass" | "warn" | "fail";
+  issues: string[];
+  raw: string;
+}
+
+export interface SchemaCheckerResponse {
+  schemas: SchemaResult[];
+  summary: {
+    totalSchemas: number;
+    passCount: number;
+    warnCount: number;
+    failCount: number;
+    score: number;
+    types: string[];
+  };
+  checkedUrl: string;
+}
+
+// Tier 1: redirect-checker response (Phase 3.5)
+export interface RedirectHop {
+  url: string;
+  statusCode: number;
+  statusText: string;
+  location: string | null;
+  server: string | null;
+}
+
+export interface RedirectCheckerResponse {
+  hops: RedirectHop[];
+  summary: {
+    totalHops: number;
+    finalUrl: string;
+    finalStatus: number;
+    hasLoop: boolean;
+    hasHttpDowngrade: boolean;
+    chainStatus: "pass" | "warn" | "fail";
+  };
+  checkedUrl: string;
+}
+
+// Tier 1: image-checker response (Phase 3.5)
+export interface ImageCheckResult {
+  src: string;
+  alt: string | null;
+  hasWidth: boolean;
+  hasHeight: boolean;
+  hasLazy: boolean;
+  format: string;
+  fileSize: number | null;
+  status: "pass" | "warn" | "fail";
+  issues: string[];
+}
+
+export interface ImageCheckerResponse {
+  images: ImageCheckResult[];
+  summary: {
+    totalImages: number;
+    totalOnPage: number;
+    passCount: number;
+    warnCount: number;
+    failCount: number;
+    score: number;
+    nextGenRate: number;
+    lazyRate: number;
+    dimensionRate: number;
+  };
+  checkedUrl: string;
+}
+
 // API error response
 export interface ApiErrorResponse {
   error: string;
@@ -195,7 +300,7 @@ export type CheckStatus =
   | "skipped"
   | "manual";
 
-export type Tier1ToolName = "ogp" | "headings" | "links" | "speed" | "alt" | "siteConfig" | "securityHeaders";
+export type Tier1ToolName = "ogp" | "headings" | "links" | "speed" | "alt" | "siteConfig" | "securityHeaders" | "cache" | "schema" | "redirect" | "image";
 
 export interface CollectedToolResults {
   ogp: { data: OgpCheckerResponse } | { error: string } | null;
@@ -205,6 +310,10 @@ export interface CollectedToolResults {
   alt: { data: AltCheckerResponse } | { error: string } | null;
   siteConfig: { data: SiteConfigCheckerResponse } | { error: string } | null;
   securityHeaders: { data: SecurityHeadersCheckerResponse } | { error: string } | null;
+  cache: { data: CacheCheckerResponse } | { error: string } | null;
+  schema: { data: SchemaCheckerResponse } | { error: string } | null;
+  redirect: { data: RedirectCheckerResponse } | { error: string } | null;
+  image: { data: ImageCheckerResponse } | { error: string } | null;
 }
 
 export interface CheckItemDefinition {

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-02-21
+
+### Added
+
+- 4 new Tier 1 SEO inspection tools:
+  - `check_cache_headers` — Check browser/CDN cache headers (Cache-Control, ETag, Last-Modified, etc.) with scoring (0-100)
+  - `check_schema_completeness` — Check structured data (JSON-LD/microdata) completeness against Schema.org requirements with per-type validation
+  - `check_redirect_chain` — Trace redirect chain (301/302/307/308) with loop detection and HTTP downgrade detection
+  - `check_image_optimization` — Check image optimization (next-gen formats, file size, lazy loading, width/height attributes) with scoring (0-100)
+- Tier 2 workflow checklists expanded with new inspection items:
+  - **SEO Audit**: 4 new items (cache headers, structured data completeness, redirect chain, image optimization) — now chains 10 tools with 20 auto-verified items (was 6 tools / 16 items)
+  - **Web Launch Audit**: 4 new items (cache headers, structured data completeness, image optimization, redirect chain) — now chains 11 tools with 21 auto + 1 manual items (was 7 tools / 17 auto + 1 manual)
+  - **Freelance Delivery Audit**: 2 new items (image optimization, redirect chain) — now chains 8 tools with 12 auto + 3 manual items (was 7 tools / 10 auto + 3 manual)
+- New Zod response schemas: `cacheCheckerResponseSchema`, `schemaCheckerResponseSchema`, `redirectCheckerResponseSchema`, `imageCheckerResponseSchema`
+- New evaluation functions: `evalCacheHeaders()`, `evalSchemaCompleteness()`, `evalRedirectChain()`, `evalImageOptimization()`
+
+### Fixed
+
+- SSRF protection: `validateUrl()` now blocks `.local` and `.internal` domain suffixes (can resolve to private IPs)
+
 ## [0.4.1] - 2026-02-18
 
 ### Fixed

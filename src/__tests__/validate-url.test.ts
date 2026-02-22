@@ -66,6 +66,25 @@ describe("validateUrl", () => {
     );
   });
 
+  // --- .local / .internal domain blocking ---
+  it("rejects .local domain", () => {
+    expect(() => validateUrl("http://myserver.local")).toThrow(
+      ".local / .internal domains is not allowed",
+    );
+  });
+
+  it("rejects .internal domain", () => {
+    expect(() => validateUrl("http://db.internal")).toThrow(
+      ".local / .internal domains is not allowed",
+    );
+  });
+
+  it("rejects nested .local domain", () => {
+    expect(() => validateUrl("https://app.staging.local")).toThrow(
+      ".local / .internal domains is not allowed",
+    );
+  });
+
   // --- Private IP blocking ---
   it("rejects 127.0.0.1 (loopback)", () => {
     expect(() => validateUrl("http://127.0.0.1")).toThrow(

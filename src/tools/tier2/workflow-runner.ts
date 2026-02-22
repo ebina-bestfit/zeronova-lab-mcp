@@ -18,6 +18,10 @@ import {
   checkAltAttributes,
   checkSiteConfig,
   checkSecurityHeaders,
+  checkCacheHeaders,
+  checkSchemaCompleteness,
+  checkRedirectChain,
+  checkImageOptimization,
 } from "../../client.js";
 import type {
   CheckItemDefinition,
@@ -34,6 +38,10 @@ import type {
   AltCheckerResponse,
   SiteConfigCheckerResponse,
   SecurityHeadersCheckerResponse,
+  CacheCheckerResponse,
+  SchemaCheckerResponse,
+  RedirectCheckerResponse,
+  ImageCheckerResponse,
 } from "../../types.js";
 
 // Checklist 2-C: Workflow timeout = 60 seconds
@@ -47,6 +55,10 @@ const TOOL_DISPLAY_NAMES: Record<Tier1ToolName, string> = {
   alt: "alt属性チェック中",
   siteConfig: "サイト設定チェック中",
   securityHeaders: "セキュリティヘッダーチェック中",
+  cache: "キャッシュヘッダーチェック中",
+  schema: "構造化データ完全性チェック中",
+  redirect: "リダイレクトチェーンチェック中",
+  image: "画像最適化チェック中",
 };
 
 /**
@@ -58,7 +70,7 @@ async function executeTier1Tool(
   url: string,
   tool: Tier1ToolName,
 ): Promise<
-  | { data: OgpCheckerResponse | HeadingExtractorResponse | LinkCheckerResponse | SpeedCheckerResponse | AltCheckerResponse | SiteConfigCheckerResponse | SecurityHeadersCheckerResponse }
+  | { data: OgpCheckerResponse | HeadingExtractorResponse | LinkCheckerResponse | SpeedCheckerResponse | AltCheckerResponse | SiteConfigCheckerResponse | SecurityHeadersCheckerResponse | CacheCheckerResponse | SchemaCheckerResponse | RedirectCheckerResponse | ImageCheckerResponse }
   | { error: string }
 > {
   try {
@@ -77,11 +89,102 @@ async function executeTier1Tool(
         return { data: await checkSiteConfig(url) };
       case "securityHeaders":
         return { data: await checkSecurityHeaders(url) };
+      case "cache":
+        return { data: await checkCacheHeaders(url) };
+      case "schema":
+        return { data: await checkSchemaCompleteness(url) };
+      case "redirect":
+        return { data: await checkRedirectChain(url) };
+      case "image":
+        return { data: await checkImageOptimization(url) };
     }
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown error";
     return { error: message };
+  }
+}
+
+/**
+ * Format a brief one-line completion message for stderr progress.
+ * Shows tool status and key metrics at a glance.
+ */
+function formatToolCompletion(
+  tool: Tier1ToolName,
+  result: { data: unknown } | { error: string },
+): string {
+  if ("error" in result) {
+    return `✗ ${tool}: ERROR — ${result.error}`;
+  }
+
+  switch (tool) {
+    case "ogp": {
+      const d = result.data as OgpCheckerResponse;
+      const parts: string[] = [];
+      parts.push(d.ogp.title ? `title: "${d.ogp.title.slice(0, 30)}${d.ogp.title.length > 30 ? "..." : ""}"` : "title: MISSING");
+      parts.push(d.ogp.image ? "image: OK" : "image: MISSING");
+      parts.push(d.twitter.card ? `card: ${d.twitter.card}` : "card: MISSING");
+      const allOk = !!d.ogp.title && !!d.ogp.description && !!d.ogp.image && !!d.twitter.card;
+      return `✓ ogp: ${allOk ? "PASS" : "WARN"} — ${parts.join(", ")}`;
+    }
+    case "headings": {
+      const d = result.data as HeadingExtractorResponse;
+      const h1Count = d.headings.filter((h) => h.level === 1).length;
+      const status = h1Count === 1 ? "PASS" : h1Count === 0 ? "FAIL" : "WARN";
+      return `✓ headings: ${status} — H1: ${h1Count}, total: ${d.headings.length}`;
+    }
+    case "links": {
+      const d = result.data as LinkCheckerResponse;
+      const broken = d.links.filter((l) => l.status >= 400 && !l.warning).length;
+      const blocked = d.links.filter((l) => l.status >= 400 && !!l.warning).length;
+      const status = broken > 0 ? "FAIL" : blocked > 0 ? "WARN" : "PASS";
+      return `✓ links: ${status} — total: ${d.totalLinks}, broken: ${broken}, blocked: ${blocked}`;
+    }
+    case "speed": {
+      const d = result.data as SpeedCheckerResponse;
+      const status = d.performanceScore >= 90 ? "PASS" : d.performanceScore >= 50 ? "WARN" : "FAIL";
+      return `✓ speed: ${status} — score: ${d.performanceScore}/100, LCP: ${d.metrics.lcp.displayValue}`;
+    }
+    case "alt": {
+      const d = result.data as AltCheckerResponse;
+      const status = d.summary.missingAlt === 0 ? "PASS" : "FAIL";
+      return `✓ alt: ${status} — total: ${d.summary.total}, missing: ${d.summary.missingAlt}`;
+    }
+    case "siteConfig": {
+      const d = result.data as SiteConfigCheckerResponse;
+      const robotsOk = d.robots.exists;
+      const sitemapOk = d.sitemap.exists;
+      const status = robotsOk && sitemapOk ? "PASS" : !robotsOk && !sitemapOk ? "FAIL" : "WARN";
+      return `✓ siteConfig: ${status} — robots: ${robotsOk ? "OK" : "MISSING"}, sitemap: ${sitemapOk ? `OK (${d.sitemap.urlCount} URLs)` : "MISSING"}`;
+    }
+    case "securityHeaders": {
+      const d = result.data as SecurityHeadersCheckerResponse;
+      const status = d.summary.score >= 80 ? "PASS" : d.summary.score >= 50 ? "WARN" : "FAIL";
+      return `✓ securityHeaders: ${status} — score: ${d.summary.score}/100, ${d.summary.present}/${d.summary.total} present`;
+    }
+    case "cache": {
+      const d = result.data as CacheCheckerResponse;
+      const status = d.summary.score >= 80 ? "PASS" : d.summary.score >= 50 ? "WARN" : "FAIL";
+      return `✓ cache: ${status} — score: ${d.summary.score}/100, browser: ${d.summary.browserCache}`;
+    }
+    case "schema": {
+      const d = result.data as SchemaCheckerResponse;
+      const status = d.summary.failCount > 0 ? "FAIL" : d.summary.warnCount > 0 ? "WARN" : "PASS";
+      return `✓ schema: ${status} — ${d.summary.totalSchemas} schema(s): ${d.summary.types.join(", ") || "none"}`;
+    }
+    case "redirect": {
+      const d = result.data as RedirectCheckerResponse;
+      const status = d.summary.chainStatus.toUpperCase();
+      const warnings: string[] = [];
+      if (d.summary.hasLoop) warnings.push("LOOP");
+      if (d.summary.hasHttpDowngrade) warnings.push("DOWNGRADE");
+      return `✓ redirect: ${status} — hops: ${d.summary.totalHops}${warnings.length > 0 ? `, ${warnings.join(", ")}` : ""}`;
+    }
+    case "image": {
+      const d = result.data as ImageCheckerResponse;
+      const status = d.summary.failCount > 0 ? "FAIL" : d.summary.warnCount > 0 ? "WARN" : "PASS";
+      return `✓ image: ${status} — score: ${d.summary.score}/100, ${d.summary.totalImages} images`;
+    }
   }
 }
 
@@ -334,6 +437,98 @@ function buildToolResultSummary(
         },
       };
     }
+    case "cache": {
+      const d = result.data as CacheCheckerResponse;
+      const allPass = d.headers.every((h) => h.status === "pass");
+      const anyFail = d.headers.some((h) => h.status === "fail");
+      return {
+        status: allPass ? "pass" : anyFail ? "fail" : "warn",
+        details: {
+          score: d.summary.score,
+          browserCache: d.summary.browserCache,
+          cdnCache: d.summary.cdnCache,
+          present: d.summary.present,
+          missing: d.summary.missing,
+          total: d.summary.total,
+          headers: d.headers.map((h) => ({
+            name: h.name,
+            present: h.present,
+            status: h.status,
+            detail: h.detail,
+            category: h.category,
+            ...(h.value ? { value: h.value.length > 100 ? h.value.slice(0, 97) + "..." : h.value } : {}),
+          })),
+        },
+      };
+    }
+    case "schema": {
+      const d = result.data as SchemaCheckerResponse;
+      return {
+        status: d.summary.failCount > 0 ? "fail" : d.summary.warnCount > 0 ? "warn" : "pass",
+        details: {
+          score: d.summary.score,
+          totalSchemas: d.summary.totalSchemas,
+          types: d.summary.types,
+          passCount: d.summary.passCount,
+          warnCount: d.summary.warnCount,
+          failCount: d.summary.failCount,
+          schemas: d.schemas.map((s) => ({
+            type: s.type,
+            status: s.status,
+            issues: s.issues,
+            missingRequired: s.properties
+              .filter((p) => p.required && !p.present)
+              .map((p) => p.name),
+          })),
+        },
+      };
+    }
+    case "redirect": {
+      const d = result.data as RedirectCheckerResponse;
+      return {
+        status: d.summary.chainStatus,
+        details: {
+          totalHops: d.summary.totalHops,
+          finalUrl: d.summary.finalUrl,
+          finalStatus: d.summary.finalStatus,
+          hasLoop: d.summary.hasLoop,
+          hasHttpDowngrade: d.summary.hasHttpDowngrade,
+          hops: d.hops.map((h) => ({
+            url: h.url,
+            statusCode: h.statusCode,
+            statusText: h.statusText,
+            location: h.location,
+          })),
+        },
+      };
+    }
+    case "image": {
+      const d = result.data as ImageCheckerResponse;
+      const failImages = d.images
+        .filter((img) => img.status === "fail")
+        .slice(0, 5)
+        .map((img) => ({
+          src: img.src,
+          issues: img.issues,
+          format: img.format,
+          fileSize: img.fileSize,
+        }));
+      return {
+        status: d.summary.failCount > 0 ? "fail" : d.summary.warnCount > 0 ? "warn" : "pass",
+        details: {
+          score: d.summary.score,
+          totalImages: d.summary.totalImages,
+          totalOnPage: d.summary.totalOnPage,
+          passCount: d.summary.passCount,
+          warnCount: d.summary.warnCount,
+          failCount: d.summary.failCount,
+          nextGenRate: d.summary.nextGenRate,
+          lazyRate: d.summary.lazyRate,
+          dimensionRate: d.summary.dimensionRate,
+          ...(failImages.length > 0 ? { failImages } : {}),
+        },
+      };
+    }
   }
 }
 
@@ -414,6 +609,10 @@ export async function runWorkflow(
     "links",
     "siteConfig",
     "securityHeaders",
+    "cache",
+    "schema",
+    "redirect",
+    "image",
     "speed",
   ];
   const toolsToExecute = executionOrder.filter((t) => requiredTools.has(t));
@@ -427,6 +626,10 @@ export async function runWorkflow(
     alt: null,
     siteConfig: null,
     securityHeaders: null,
+    cache: null,
+    schema: null,
+    redirect: null,
+    image: null,
   };
 
   const totalTools = toolsToExecute.length;
@@ -468,6 +671,10 @@ export async function runWorkflow(
     clearTimeout(timeoutTimer);
 
     (toolResults as unknown as Record<string, unknown>)[tool] = result;
+
+    // P2: Emit tool completion result to stderr
+    const completionLine = formatToolCompletion(tool, result);
+    onProgress?.(completionLine);
 
     // If workflow timed out during this tool, mark remaining as skipped
     if ("error" in result && result.error.includes("タイムアウト（60秒）")) {

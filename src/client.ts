@@ -7,6 +7,10 @@ import type {
   HeadingExtractorResponse,
   SiteConfigCheckerResponse,
   SecurityHeadersCheckerResponse,
+  CacheCheckerResponse,
+  SchemaCheckerResponse,
+  RedirectCheckerResponse,
+  ImageCheckerResponse,
 } from "./types.js";
 
 // Checklist 2-B: API base URL configurable via ZERONOVA_API_URL env var
@@ -25,7 +29,7 @@ const SPEED_CHECKER_TIMEOUT_MS = 30_000;
 const RETRY_DELAY_MS = 2_000;
 
 // Checklist 2-B: User-Agent format = ZeronovaLabMCP/{version}
-const USER_AGENT = "ZeronovaLabMCP/0.4.1";
+const USER_AGENT = "ZeronovaLabMCP/0.5.0";
 
 export class ApiError extends Error {
   constructor(
@@ -304,6 +308,111 @@ const securityHeadersCheckerResponseSchema = z.object({
   checkedUrl: z.string(),
 });
 
+// Phase 3.5: cache-checker response schema
+const cacheHeaderResultSchema = z.object({
+  name: z.string(),
+  present: z.boolean(),
+  value: z.union([z.string(), z.null()]),
+  status: z.enum(["pass", "warn", "fail"]),
+  detail: z.string(),
+  category: z.enum(["browser", "cdn", "validation"]),
+});
+
+const cacheCheckerResponseSchema = z.object({
+  headers: z.array(cacheHeaderResultSchema),
+  summary: z.object({
+    total: z.number(),
+    present: z.number(),
+    missing: z.number(),
+    score: z.number(),
+    browserCache: z.enum(["enabled", "partial", "disabled"]),
+    cdnCache: z.enum(["hit", "miss", "unknown"]),
+  }),
+  url: z.string(),
+  checkedUrl: z.string(),
+});
+
+// Phase 3.5: schema-checker response schema
+const schemaPropertySchema = z.object({
+  name: z.string(),
+  present: z.boolean(),
+  value: z.string().optional(),
+  required: z.boolean(),
+});
+
+const schemaResultSchema = z.object({
+  type: z.string(),
+  source: z.literal("json-ld"),
+  properties: z.array(schemaPropertySchema),
+  status: z.enum(["pass", "warn", "fail"]),
+  issues: z.array(z.string()),
+  raw: z.string(),
+});
+
+const schemaCheckerResponseSchema = z.object({
+  schemas: z.array(schemaResultSchema),
+  summary: z.object({
+    totalSchemas: z.number(),
+    passCount: z.number(),
+    warnCount: z.number(),
+    failCount: z.number(),
+    score: z.number(),
+    types: z.array(z.string()),
+  }),
+  checkedUrl: z.string(),
+});
+
+// Phase 3.5: redirect-checker response schema
+const redirectHopSchema = z.object({
+  url: z.string(),
+  statusCode: z.number(),
+  statusText: z.string(),
+  location: z.union([z.string(), z.null()]),
+  server: z.union([z.string(), z.null()]),
+});
+
+const redirectCheckerResponseSchema = z.object({
+  hops: z.array(redirectHopSchema),
+  summary: z.object({
+    totalHops: z.number(),
+    finalUrl: z.string(),
+    finalStatus: z.number(),
+    hasLoop: z.boolean(),
+    hasHttpDowngrade: z.boolean(),
+    chainStatus: z.enum(["pass", "warn", "fail"]),
+  }),
+  checkedUrl: z.string(),
+});
+
+// Phase 3.5: image-checker response schema
+const imageCheckResultSchema = z.object({
+  src: z.string(),
+  alt: z.union([z.string(), z.null()]),
+  hasWidth: z.boolean(),
+  hasHeight: z.boolean(),
+  hasLazy: z.boolean(),
+  format: z.string(),
+  fileSize: z.union([z.number(), z.null()]),
+  status: z.enum(["pass", "warn", "fail"]),
+  issues: z.array(z.string()),
+});
+
+const imageCheckerResponseSchema = z.object({
+  images: z.array(imageCheckResultSchema),
+  summary: z.object({
+    totalImages: z.number(),
+    totalOnPage: z.number(),
+    passCount: z.number(),
+    warnCount: z.number(),
+    failCount: z.number(),
+    score: z.number(),
+    nextGenRate: z.number(),
+    lazyRate: z.number(),
+    dimensionRate: z.number(),
+  }),
+  checkedUrl: z.string(),
+});
+
 /**
  * Validate API response against Zod schema.
  * Checklist 2-B: detect API response format changes early.
@@ -385,4 +494,38 @@ export async function checkSecurityHeaders(
     securityHeadersCheckerResponseSchema,
     "security-headers-checker",
   );
+}
+
+// Phase 3.5: New Tier 1 API functions
+
+export async function checkCacheHeaders(
+  url: string,
+): Promise<CacheCheckerResponse> {
+  const raw = await fetchApi<unknown>("cache-checker", { url });
+  return validateResponse(raw, cacheCheckerResponseSchema, "cache-checker");
+}
+
+export async function checkSchemaCompleteness(
+  url: string,
+): Promise<SchemaCheckerResponse> {
+  const raw = await fetchApi<unknown>("schema-checker", { url });
+  return validateResponse(raw, schemaCheckerResponseSchema, "schema-checker");
+}
+
+export async function checkRedirectChain(
+  url: string,
+): Promise<RedirectCheckerResponse> {
+  const raw = await fetchApi<unknown>("redirect-checker", { url });
+  return validateResponse(
+    raw,
+    redirectCheckerResponseSchema,
+    "redirect-checker",
+  );
+}
+
+export async function checkImageOptimization(
+  url: string,
+): Promise<ImageCheckerResponse> {
+  const raw = await fetchApi<unknown>("image-checker", { url });
+  return validateResponse(raw, imageCheckerResponseSchema, "image-checker");
 }

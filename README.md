@@ -4,7 +4,7 @@ MCP Server for [ZERONOVA LAB](https://zeronova-lab.com) tools — SEO audit, lin
 
 ## Features
 
-### Tier 1: Individual Tools (8 tools)
+### Tier 1: Individual Tools (12 tools)
 
 Single-purpose API wrappers for web page analysis:
 
@@ -18,6 +18,10 @@ Single-purpose API wrappers for web page analysis:
 | `check_x_card` | Check X (Twitter) Card settings and validation |
 | `check_site_config` | Check robots.txt and XML sitemap configuration |
 | `check_security_headers` | Check 6 HTTP security headers (HSTS, CSP, etc.) with scoring |
+| `check_cache_headers` | Check browser/CDN cache headers with scoring |
+| `check_schema_completeness` | Check structured data completeness against Schema.org requirements |
+| `check_redirect_chain` | Trace redirect chain with loop and HTTP downgrade detection |
+| `check_image_optimization` | Check image optimization (format, size, lazy loading, dimensions) with scoring |
 
 ### Tier 2: Workflow Tools (3 tools)
 
@@ -25,9 +29,9 @@ Single-purpose API wrappers for web page analysis:
 
 | Tool | Description |
 |------|-------------|
-| `run_seo_audit` | Comprehensive SEO audit with scoring (0-100). Chains 6 tools (OGP, heading, link, speed, alt, site config) into a unified report with 16 auto-verified items. |
-| `run_web_launch_audit` | Pre-launch quality audit. Chains 7 tools (OGP, heading, link, speed, alt, site config, security headers) for SEO, performance, accessibility, and branding checks (17 auto + 1 manual items). |
-| `run_freelance_delivery_audit` | Pre-delivery audit for freelance projects. Chains 7 tools for quality, SEO, accessibility, and security checks (10 auto + 3 manual items). |
+| `run_seo_audit` | Comprehensive SEO audit with scoring (0-100). Chains 10 tools into a unified report with 20 auto-verified items. |
+| `run_web_launch_audit` | Pre-launch quality audit. Chains 11 tools for SEO, performance, accessibility, caching, image optimization, and branding checks (21 auto + 1 manual items). |
+| `run_freelance_delivery_audit` | Pre-delivery audit for freelance projects. Chains 8 tools for quality, SEO, accessibility, security, and optimization checks (12 auto + 3 manual items). |
 
 **Workflow features:**
 - Checklist-driven evaluation with weighted scoring (pass = full weight, warn = half, fail = 0)
@@ -173,40 +177,76 @@ Check HTTP security headers for a website.
 
 **Returns:** 6 security headers (Strict-Transport-Security, Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy) with pass/warn/fail status, header values, and overall security score (0-100).
 
+#### check_cache_headers
+
+Check browser and CDN cache headers for a webpage.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** Cache-related headers (Cache-Control, ETag, Last-Modified, Expires, Vary, CDN-Cache-Status, CF-Cache-Status) with category (browser/cdn/validation), pass/warn/fail status, and overall cache score (0-100). Includes browser cache and CDN cache status detection.
+
+#### check_schema_completeness
+
+Check structured data (JSON-LD / microdata) completeness against Schema.org requirements.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** List of detected schemas with type, source (json-ld/microdata), property presence (required/optional), pass/warn/fail status per schema, issues list, and overall completeness score (0-100).
+
+#### check_redirect_chain
+
+Trace the redirect chain for a URL.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** Redirect hops with URL, HTTP status code, Location header, and server header. Summary includes total hops, final URL, final status, loop detection, HTTP downgrade detection, and chain status (pass/warn/fail).
+
+#### check_image_optimization
+
+Check image optimization for a webpage.
+
+**Parameters:**
+- `url` (required): Target webpage URL
+
+**Returns:** List of images with src, alt, width/height attributes, lazy loading, format, file size, pass/warn/fail status, and issues. Summary includes next-gen format rate, lazy loading rate, dimension rate, and overall optimization score (0-100).
+
 ### Tier 2 Tools
 
 #### run_seo_audit
 
-Comprehensive SEO audit that chains 6 tools into a unified report with scoring.
+Comprehensive SEO audit that chains 10 tools into a unified report with scoring.
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- 16 auto-verified checklist items: meta title/description, canonical URL, JSON-LD, robots.txt, XML sitemap, H1 uniqueness, heading hierarchy, alt attributes, performance score, LCP, CLS, OGP image, Twitter Card/image, broken links
+- 20 auto-verified checklist items: meta title/description, canonical URL, JSON-LD, robots.txt, XML sitemap, H1 uniqueness, heading hierarchy, alt attributes, performance score, LCP, CLS, OGP image, Twitter Card/image, broken links, cache headers, structured data completeness, redirect chain, image optimization
 - Weighted score (0-100)
 
 #### run_web_launch_audit
 
-Pre-launch quality audit for websites about to go live. Chains 7 Tier 1 tools (OGP, heading, link, speed, alt, site config, security headers).
+Pre-launch quality audit for websites about to go live. Chains 11 Tier 1 tools.
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- 17 auto-verified checklist items: meta tags, OGP, Twitter Card, heading structure, robots.txt, sitemap, JSON-LD, performance, LCP, CLS, broken links, alt attributes, color contrast, favicon, security headers
+- 21 auto-verified checklist items: meta tags, OGP, Twitter Card, heading structure, robots.txt, sitemap, JSON-LD, performance, LCP, CLS, broken links, alt attributes, color contrast, favicon, security headers, cache headers, structured data completeness, image optimization, redirect chain
 - 1 manual check item: OGP brand design
 - Weighted score (0-100)
 
 #### run_freelance_delivery_audit
 
-Pre-delivery audit for freelance web projects. Chains 7 Tier 1 tools (OGP, heading, link, speed, alt, site config, security headers).
+Pre-delivery audit for freelance web projects. Chains 8 Tier 1 tools.
 
 **Parameters:**
 - `url` (required): Target webpage URL
 
 **Returns:** Audit report with:
-- 10 auto-verified checklist items: broken links, page speed, alt attributes, H1, meta title, meta description, OGP image, color contrast, favicon, security headers
+- 12 auto-verified checklist items: broken links, page speed, alt attributes, H1, meta title, meta description, OGP image, color contrast, favicon, security headers, image optimization, redirect chain
 - 3 manual check items: proofreading, invoice, pricing
 - Weighted score (0-100)
 
@@ -305,7 +345,7 @@ Example with custom API URL:
 
 ## Security
 
-- **SSRF Protection**: URLs are validated for protocol (http/https only) and private IP ranges (localhost, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16) are blocked. API routes use `redirect: "manual"` with per-hop validation.
+- **SSRF Protection**: URLs are validated for protocol (http/https only), private IP ranges (localhost, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16), and `.local`/`.internal` domain suffixes are blocked. API routes use `redirect: "manual"` with per-hop validation.
 - **Rate Limiting**: Each tool is limited to **10 requests per minute** locally. The ZERONOVA LAB API also enforces its own rate limits.
 - **Response Validation**: All API responses are validated against Zod schemas to detect format changes early.
 - **Error Sanitization**: Internal paths and API URLs are never exposed in error messages.

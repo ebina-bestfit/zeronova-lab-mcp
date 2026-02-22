@@ -13,6 +13,10 @@ import { handleHeadingExtractor } from "./tools/tier1/heading-extractor.js";
 import { handleXCardPreview } from "./tools/tier1/x-card-preview.js";
 import { handleSiteConfigChecker } from "./tools/tier1/site-config-checker.js";
 import { handleSecurityHeadersChecker } from "./tools/tier1/security-headers-checker.js";
+import { handleCacheChecker } from "./tools/tier1/cache-checker.js";
+import { handleSchemaChecker } from "./tools/tier1/schema-checker.js";
+import { handleRedirectChecker } from "./tools/tier1/redirect-checker.js";
+import { handleImageChecker } from "./tools/tier1/image-checker.js";
 import { handleSeoAudit } from "./tools/tier2/seo-audit.js";
 import { handleWebLaunchAudit } from "./tools/tier2/web-launch-audit.js";
 import { handleFreelanceDeliveryAudit } from "./tools/tier2/freelance-delivery-audit.js";
@@ -21,6 +25,21 @@ import { handleGenerateSitemapXml } from "./tools/tier3/sitemap-xml-generator.js
 import { handleGenerateHtaccess } from "./tools/tier3/htaccess-generator.js";
 import { handleGenerateJsonLd } from "./tools/tier3/jsonld-generator.js";
 import { handleGenerateMetaTags } from "./tools/tier3/meta-tag-generator.js";
+import {
+  summarizeAltChecker,
+  summarizeLinkChecker,
+  summarizeSpeedChecker,
+  summarizeOgpChecker,
+  summarizeHeadingExtractor,
+  summarizeXCardPreview,
+  summarizeSiteConfigChecker,
+  summarizeSecurityHeaders,
+  summarizeCacheChecker,
+  summarizeSchemaChecker,
+  summarizeRedirectChecker,
+  summarizeImageChecker,
+  summarizeAuditReport,
+} from "./format-summary.js";
 
 const rateLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000 });
 
@@ -51,6 +70,13 @@ export function validateUrl(url: string): string {
   // Block localhost
   if (hostname === "localhost" || hostname === "[::1]") {
     throw new Error("Access to localhost is not allowed");
+  }
+
+  // Block .local / .internal domains (can resolve to private IPs)
+  if (hostname.endsWith(".local") || hostname.endsWith(".internal")) {
+    throw new Error(
+      "Access to .local / .internal domains is not allowed",
+    );
   }
 
   // Block private/reserved IP ranges
@@ -106,7 +132,7 @@ function formatError(error: unknown): string {
 
 const server = new McpServer({
   name: "zeronova-lab",
-  version: "0.4.1",
+  version: "0.5.0",
 });
 
 // Zod schemas with maxLength constraint (mcp-dev-checklist section 2-A)
@@ -145,7 +171,10 @@ server.tool(
       checkRateLimit("check_alt_attributes");
       const result = await handleAltChecker(validUrl);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeAltChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -167,7 +196,10 @@ server.tool(
       checkRateLimit("check_links");
       const result = await handleLinkChecker(validUrl);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeLinkChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -189,7 +221,10 @@ server.tool(
       checkRateLimit("check_page_speed");
       const result = await handleSpeedChecker(validUrl, strategy);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeSpeedChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -211,7 +246,10 @@ server.tool(
       checkRateLimit("check_ogp");
       const result = await handleOgpChecker(validUrl);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeOgpChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -233,7 +271,10 @@ server.tool(
       checkRateLimit("extract_headings");
       const result = await handleHeadingExtractor(validUrl);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeHeadingExtractor(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -255,7 +296,10 @@ server.tool(
       checkRateLimit("check_x_card");
       const result = await handleXCardPreview(validUrl);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeXCardPreview(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -277,7 +321,10 @@ server.tool(
       checkRateLimit("check_site_config");
       const result = await handleSiteConfigChecker(validUrl);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeSiteConfigChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -299,7 +346,110 @@ server.tool(
       checkRateLimit("check_security_headers");
       const result = await handleSecurityHeadersChecker(validUrl);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeSecurityHeaders(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 1: cache-checker (Phase 3.5)
+server.tool(
+  "check_cache_headers",
+  "Check HTTP cache and compression headers on a webpage. Inspects Cache-Control, ETag, Last-Modified, Age, Vary, CDN cache status, and Expires headers. Returns each header's presence, value, status (pass/warn/fail), and category (browser/cdn/validation), plus a summary with browser cache status (enabled/partial/disabled), CDN cache status (hit/miss/unknown), and an overall score (0-100).",
+  urlSchema,
+  async ({ url }) => {
+    try {
+      const validUrl = validateUrl(url);
+      checkRateLimit("check_cache_headers");
+      const result = await handleCacheChecker(validUrl);
+      return {
+        content: [
+          { type: "text", text: summarizeCacheChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 1: schema-checker (Phase 3.5)
+server.tool(
+  "check_schema_completeness",
+  "Check JSON-LD structured data completeness on a webpage. Validates each schema against Google Rich Results requirements, checking required and recommended properties. Supports 18 schema types: Article, BlogPosting, NewsArticle, FAQPage, Product, BreadcrumbList, Organization, Person, WebSite, WebPage, LocalBusiness, SoftwareApplication, ItemList, VideoObject, HowTo, Recipe, Event, Review. Returns per-schema property details, issues, and an overall score (0-100).",
+  urlSchema,
+  async ({ url }) => {
+    try {
+      const validUrl = validateUrl(url);
+      checkRateLimit("check_schema_completeness");
+      const result = await handleSchemaChecker(validUrl);
+      return {
+        content: [
+          { type: "text", text: summarizeSchemaChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 1: redirect-checker (Phase 3.5)
+server.tool(
+  "check_redirect_chain",
+  "Check the redirect chain for a URL. Follows up to 10 redirects, recording each hop's URL, status code, Location header, and Server header. Detects redirect loops, HTTPS-to-HTTP downgrades, and excessive chain length. Returns hop details and a summary with total hops, final URL/status, loop/downgrade flags, and chain status (pass: 0-1 hops / warn: 2-3 hops / fail: loop, downgrade, or 4+ hops).",
+  urlSchema,
+  async ({ url }) => {
+    try {
+      const validUrl = validateUrl(url);
+      checkRateLimit("check_redirect_chain");
+      const result = await handleRedirectChecker(validUrl);
+      return {
+        content: [
+          { type: "text", text: summarizeRedirectChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: formatError(error) }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Tier 1: image-checker (Phase 3.5)
+server.tool(
+  "check_image_optimization",
+  "Check image optimization on a webpage. Analyzes up to 20 images for format (WebP/AVIF preferred), file size (<100KB pass / 100-500KB warn / >500KB fail), lazy loading (loading=\"lazy\"), responsive attributes (srcset/sizes), and dimension attributes (width/height for CLS prevention). Returns per-image details with issues and a summary with score (0-100), next-gen format rate, lazy loading rate, and dimension rate.",
+  urlSchema,
+  async ({ url }) => {
+    try {
+      const validUrl = validateUrl(url);
+      checkRateLimit("check_image_optimization");
+      const result = await handleImageChecker(validUrl);
+      return {
+        content: [
+          { type: "text", text: summarizeImageChecker(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -336,7 +486,7 @@ function buildSendProgress(
 // Tier 2: run_seo_audit
 server.tool(
   "run_seo_audit",
-  "Run a comprehensive SEO audit on a webpage. Internally chains 6 tools (OGP checker, heading extractor, link checker, page speed with accessibility, alt checker, site config checker) and returns a unified report with a score (0-100), per-item pass/warn/fail status, and improvement suggestions. All 16 SEO items are auto-verified including canonical URL, JSON-LD, robots.txt, and XML sitemap.",
+  "Run a comprehensive SEO audit on a webpage. Internally chains 10 tools (OGP checker, heading extractor, link checker, page speed with accessibility, alt checker, site config checker, cache headers checker, schema completeness checker, redirect chain checker, image optimization checker) and returns a unified report with a score (0-100), per-item pass/warn/fail status, and improvement suggestions. All 20 SEO items are auto-verified including canonical URL, JSON-LD completeness, robots.txt, XML sitemap, cache headers, redirect chains, and image optimization.",
   urlSchema,
   async ({ url }, extra) => {
     try {
@@ -356,7 +506,10 @@ server.tool(
       );
       const result = await handleSeoAudit(validUrl, onProgress, sendProgress);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeAuditReport(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -370,7 +523,7 @@ server.tool(
 // Tier 2: run_web_launch_audit
 server.tool(
   "run_web_launch_audit",
-  "Run a pre-launch quality audit on a webpage. Internally chains 7 tools (OGP checker, heading extractor, link checker, page speed with accessibility, alt checker, site config checker, security headers checker) and checks SEO settings, performance (Core Web Vitals), link integrity, alt attributes, color contrast, favicon, and security headers. Returns a score (0-100) with per-item results.",
+  "Run a pre-launch quality audit on a webpage. Internally chains 11 tools (OGP checker, heading extractor, link checker, page speed with accessibility, alt checker, site config checker, security headers checker, cache headers checker, schema completeness checker, redirect chain checker, image optimization checker) and checks SEO settings, performance (Core Web Vitals), link integrity, alt attributes, color contrast, favicon, security headers, cache configuration, redirect chains, and image optimization. Returns a score (0-100) with per-item results.",
   urlSchema,
   async ({ url }, extra) => {
     try {
@@ -390,7 +543,10 @@ server.tool(
       );
       const result = await handleWebLaunchAudit(validUrl, onProgress, sendProgress);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeAuditReport(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {
@@ -404,7 +560,7 @@ server.tool(
 // Tier 2: run_freelance_delivery_audit
 server.tool(
   "run_freelance_delivery_audit",
-  "Run a pre-delivery quality audit for freelance web projects. Checks link integrity, page speed, alt attributes, color contrast, meta tags, OGP configuration, favicon, and security headers. Returns a score (0-100) with per-item results. Also lists manual-check items for proofreading and invoicing.",
+  "Run a pre-delivery quality audit for freelance web projects. Checks link integrity, page speed, alt attributes, color contrast, meta tags, OGP configuration, favicon, security headers, image optimization, and redirect chains. Returns a score (0-100) with per-item results. Also lists manual-check items for proofreading and invoicing.",
   urlSchema,
   async ({ url }, extra) => {
     try {
@@ -424,7 +580,10 @@ server.tool(
       );
       const result = await handleFreelanceDeliveryAudit(validUrl, onProgress, sendProgress);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [
+          { type: "text", text: summarizeAuditReport(result) },
+          { type: "text", text: JSON.stringify(result, null, 2) },
+        ],
       };
     } catch (error) {
       return {

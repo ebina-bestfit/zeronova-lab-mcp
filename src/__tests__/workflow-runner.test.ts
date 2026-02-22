@@ -7,6 +7,10 @@ import type {
   AltCheckerResponse,
   SiteConfigCheckerResponse,
   SecurityHeadersCheckerResponse,
+  CacheCheckerResponse,
+  SchemaCheckerResponse,
+  RedirectCheckerResponse,
+  ImageCheckerResponse,
 } from "../types.js";
 
 // ---- Mock all client functions ----
@@ -29,6 +33,14 @@ const mockCheckSiteConfig =
   vi.fn<(url: string) => Promise<SiteConfigCheckerResponse>>();
 const mockCheckSecurityHeaders =
   vi.fn<(url: string) => Promise<SecurityHeadersCheckerResponse>>();
+const mockCheckCacheHeaders =
+  vi.fn<(url: string) => Promise<CacheCheckerResponse>>();
+const mockCheckSchemaCompleteness =
+  vi.fn<(url: string) => Promise<SchemaCheckerResponse>>();
+const mockCheckRedirectChain =
+  vi.fn<(url: string) => Promise<RedirectCheckerResponse>>();
+const mockCheckImageOptimization =
+  vi.fn<(url: string) => Promise<ImageCheckerResponse>>();
 
 vi.mock("../client.js", () => ({
   checkOgp: (...args: unknown[]) => mockCheckOgp(args[0] as string),
@@ -43,6 +55,14 @@ vi.mock("../client.js", () => ({
     mockCheckSiteConfig(args[0] as string),
   checkSecurityHeaders: (...args: unknown[]) =>
     mockCheckSecurityHeaders(args[0] as string),
+  checkCacheHeaders: (...args: unknown[]) =>
+    mockCheckCacheHeaders(args[0] as string),
+  checkSchemaCompleteness: (...args: unknown[]) =>
+    mockCheckSchemaCompleteness(args[0] as string),
+  checkRedirectChain: (...args: unknown[]) =>
+    mockCheckRedirectChain(args[0] as string),
+  checkImageOptimization: (...args: unknown[]) =>
+    mockCheckImageOptimization(args[0] as string),
 }));
 
 const { runWorkflow } = await import("../tools/tier2/workflow-runner.js");
@@ -234,6 +254,70 @@ function makeSecurityHeadersResponse(
   };
 }
 
+function makeCacheResponse(
+  overrides?: Partial<CacheCheckerResponse>,
+): CacheCheckerResponse {
+  return {
+    headers: [
+      { name: "Cache-Control", present: true, value: "public, max-age=31536000", status: "pass", detail: "ブラウザキャッシュ設定済み", category: "browser" },
+      { name: "ETag", present: true, value: "\"abc123\"", status: "pass", detail: "ETag設定済み", category: "validation" },
+    ],
+    summary: { total: 2, present: 2, missing: 0, score: 100, browserCache: "enabled", cdnCache: "hit" },
+    url: "https://example.com",
+    checkedUrl: "https://example.com",
+    ...overrides,
+  };
+}
+
+function makeSchemaResponse(
+  overrides?: Partial<SchemaCheckerResponse>,
+): SchemaCheckerResponse {
+  return {
+    schemas: [
+      {
+        type: "WebSite",
+        source: "json-ld",
+        properties: [
+          { name: "name", present: true, value: "Example", required: true },
+          { name: "url", present: true, value: "https://example.com", required: true },
+        ],
+        status: "pass",
+        issues: [],
+        raw: '{"@type":"WebSite"}',
+      },
+    ],
+    summary: { totalSchemas: 1, passCount: 1, warnCount: 0, failCount: 0, score: 100, types: ["WebSite"] },
+    checkedUrl: "https://example.com",
+    ...overrides,
+  };
+}
+
+function makeRedirectResponse(
+  overrides?: Partial<RedirectCheckerResponse>,
+): RedirectCheckerResponse {
+  return {
+    hops: [
+      { url: "https://example.com", statusCode: 200, statusText: "OK", location: null, server: "nginx" },
+    ],
+    summary: { totalHops: 0, finalUrl: "https://example.com", finalStatus: 200, hasLoop: false, hasHttpDowngrade: false, chainStatus: "pass" },
+    checkedUrl: "https://example.com",
+    ...overrides,
+  };
+}
+
+function makeImageResponse(
+  overrides?: Partial<ImageCheckerResponse>,
+): ImageCheckerResponse {
+  return {
+    images: [
+      { src: "https://example.com/img.webp", alt: "Example", hasWidth: true, hasHeight: true, hasLazy: true, format: "webp", fileSize: 50000, status: "pass", issues: [] },
+    ],
+    summary: { totalImages: 1, totalOnPage: 1, passCount: 1, warnCount: 0, failCount: 0, score: 100, nextGenRate: 1, lazyRate: 1, dimensionRate: 1 },
+    checkedUrl: "https://example.com",
+    ...overrides,
+  };
+}
+
 function setupAllMocksSuccess() {
   mockCheckOgp.mockResolvedValue(makeOgpResponse());
   mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
@@ -242,6 +326,10 @@ function setupAllMocksSuccess() {
   mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
   mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
   mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+  mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+  mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+  mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+  mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 }
 
 // ---- Tests ----
@@ -255,6 +343,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockReset();
     mockCheckSiteConfig.mockReset();
     mockCheckSecurityHeaders.mockReset();
+    mockCheckCacheHeaders.mockReset();
+    mockCheckSchemaCompleteness.mockReset();
+    mockCheckRedirectChain.mockReset();
+    mockCheckImageOptimization.mockReset();
   });
 
   it("returns a complete audit report with all tools passing", async () => {
@@ -279,7 +371,7 @@ describe("runWorkflow", () => {
       expect(["pass", "warn"]).toContain(item.status);
     }
 
-    // SEO audit should have 0 manual items (all 16 auto-verifiable after Phase 2.5)
+    // SEO audit should have 0 manual items (all 20 auto-verifiable after Phase 3.5)
     expect(report.checklist.manual).toBe(0);
   });
 
@@ -294,6 +386,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
     mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -378,6 +474,10 @@ describe("runWorkflow", () => {
     );
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
     mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -461,6 +561,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
     mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -505,7 +609,7 @@ describe("runWorkflow", () => {
       (message) => progressMessages.push(message),
     );
 
-    // Should have start, per-tool, and completion messages
+    // Should have start, per-tool (start + completion), and final completion messages
     expect(progressMessages.length).toBeGreaterThanOrEqual(3);
     expect(progressMessages[0]).toContain("監査開始");
     expect(progressMessages[progressMessages.length - 1]).toContain(
@@ -515,6 +619,76 @@ describe("runWorkflow", () => {
     expect(
       progressMessages.some((m) => m.includes("OGPチェック中")),
     ).toBe(true);
+  });
+
+  it("emits tool completion results to onProgress (P2)", async () => {
+    setupAllMocksSuccess();
+    const progressMessages: string[] = [];
+
+    await runWorkflow(
+      "https://example.com",
+      "seo-audit",
+      seoAuditChecklist,
+      (message) => progressMessages.push(message),
+    );
+
+    // Should have completion messages with ✓ prefix for each tool
+    const completionMessages = progressMessages.filter((m) => m.startsWith("✓"));
+    // SEO audit uses 10 tools
+    expect(completionMessages.length).toBe(10);
+
+    // OGP completion should show title and status
+    const ogpCompletion = completionMessages.find((m) => m.includes("ogp:"));
+    expect(ogpCompletion).toContain("PASS");
+    expect(ogpCompletion).toContain("title:");
+
+    // Links completion should show counts
+    const linksCompletion = completionMessages.find((m) => m.includes("links:"));
+    expect(linksCompletion).toContain("PASS");
+    expect(linksCompletion).toContain("broken: 0");
+
+    // Speed completion should show score
+    const speedCompletion = completionMessages.find((m) => m.includes("speed:"));
+    expect(speedCompletion).toContain("score: 95/100");
+
+    // Headings completion should show H1 count
+    const headingsCompletion = completionMessages.find((m) => m.includes("headings:"));
+    expect(headingsCompletion).toContain("H1: 1");
+  });
+
+  it("emits error completion for failed tools (P2)", async () => {
+    mockCheckOgp.mockResolvedValue(makeOgpResponse());
+    mockExtractHeadings.mockResolvedValue(makeHeadingsResponse());
+    mockCheckLinks.mockResolvedValue(makeLinksResponse());
+    mockCheckSpeed.mockRejectedValue(new Error("PageSpeed API unavailable"));
+    mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
+    mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
+    mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
+
+    const progressMessages: string[] = [];
+
+    await runWorkflow(
+      "https://example.com",
+      "seo-audit",
+      seoAuditChecklist,
+      (message) => progressMessages.push(message),
+    );
+
+    // Speed tool should show error completion
+    const speedCompletion = progressMessages.find(
+      (m) => m.includes("speed:") && m.startsWith("✗"),
+    );
+    expect(speedCompletion).toBeDefined();
+    expect(speedCompletion).toContain("ERROR");
+    expect(speedCompletion).toContain("PageSpeed API unavailable");
+
+    // Other tools should show success
+    const successCompletions = progressMessages.filter((m) => m.startsWith("✓"));
+    expect(successCompletions.length).toBe(9); // 10 tools - 1 failed
   });
 
   it("deduplicates Tier 1 tool calls", async () => {
@@ -578,6 +752,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockRejectedValue(new Error("API error"));
     mockCheckSiteConfig.mockRejectedValue(new Error("API error"));
     mockCheckSecurityHeaders.mockRejectedValue(new Error("API error"));
+    mockCheckCacheHeaders.mockRejectedValue(new Error("API error"));
+    mockCheckSchemaCompleteness.mockRejectedValue(new Error("API error"));
+    mockCheckRedirectChain.mockRejectedValue(new Error("API error"));
+    mockCheckImageOptimization.mockRejectedValue(new Error("API error"));
 
     const report = await runWorkflow(
       "https://example.com",
@@ -588,7 +766,7 @@ describe("runWorkflow", () => {
     // Score = 0 when all tools fail (no evaluable items)
     expect(report.score).toBe(0);
 
-    // All items should be "error" (SEO audit has 0 manual items after Phase 2.5)
+    // All items should be "error" (SEO audit has 0 manual items after Phase 3.5)
     for (const item of report.checklist.items) {
       expect(item.status).toBe("error");
     }
@@ -630,6 +808,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
     mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -686,6 +868,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
     mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -720,9 +906,9 @@ describe("runWorkflow", () => {
       sendProgress,
     );
 
-    // Should have start (0), per-tool (1-6), and completion (7) = 8 calls
-    // SEO audit uses 6 tools (no securityHeaders)
-    expect(sendProgress).toHaveBeenCalledTimes(8);
+    // Should have start (0), per-tool (1-10), and completion (11) = 12 calls
+    // SEO audit uses 10 tools (ogp, headings, links, alt, siteConfig, cache, schema, redirect, image, speed)
+    expect(sendProgress).toHaveBeenCalledTimes(12);
     // First call: progress 0 (start)
     expect(sendProgress.mock.calls[0][0]).toBe(0);
     expect(sendProgress.mock.calls[0][2]).toContain("監査開始");
@@ -806,6 +992,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
     mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -841,6 +1031,10 @@ describe("runWorkflow", () => {
     mockCheckAltAttributes.mockResolvedValue(makeAltResponse());
     mockCheckSiteConfig.mockResolvedValue(makeSiteConfigResponse());
     mockCheckSecurityHeaders.mockResolvedValue(makeSecurityHeadersResponse());
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",
@@ -875,6 +1069,10 @@ describe("runWorkflow", () => {
         summary: { total: 6, present: 0, missing: 6, score: 0 },
       }),
     );
+    mockCheckCacheHeaders.mockResolvedValue(makeCacheResponse());
+    mockCheckSchemaCompleteness.mockResolvedValue(makeSchemaResponse());
+    mockCheckRedirectChain.mockResolvedValue(makeRedirectResponse());
+    mockCheckImageOptimization.mockResolvedValue(makeImageResponse());
 
     const report = await runWorkflow(
       "https://example.com",

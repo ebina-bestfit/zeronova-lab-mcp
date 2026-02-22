@@ -40,7 +40,7 @@ describe("client - API calls", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(options.headers).toEqual(
-      expect.objectContaining({ "User-Agent": "ZeronovaLabMCP/0.4.1" }),
+      expect.objectContaining({ "User-Agent": "ZeronovaLabMCP/0.5.0" }),
     );
   });
 

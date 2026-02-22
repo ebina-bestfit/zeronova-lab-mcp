@@ -58,6 +58,30 @@ function getSecurityHeadersData(results: CollectedToolResults) {
   return r.data;
 }
 
+function getCacheData(results: CollectedToolResults) {
+  const r = results.cache;
+  if (!r || "error" in r) return null;
+  return r.data;
+}
+
+function getSchemaData(results: CollectedToolResults) {
+  const r = results.schema;
+  if (!r || "error" in r) return null;
+  return r.data;
+}
+
+function getRedirectData(results: CollectedToolResults) {
+  const r = results.redirect;
+  if (!r || "error" in r) return null;
+  return r.data;
+}
+
+function getImageData(results: CollectedToolResults) {
+  const r = results.image;
+  if (!r || "error" in r) return null;
+  return r.data;
+}
+
 function toolError(
   toolName: string,
 ): { status: CheckStatus; detail: string } {
@@ -523,6 +547,136 @@ function evalSecurityHeaders(
   };
 }
 
+// ---- Phase 3.5: New evaluation functions ----
+
+function evalCacheHeaders(
+  results: CollectedToolResults,
+): { status: CheckStatus; detail?: string } {
+  const cache = getCacheData(results);
+  if (!cache) return toolError("キャッシュヘッダーチェッカー");
+  const score = cache.summary.score;
+  const browserInfo = `ブラウザキャッシュ: ${cache.summary.browserCache}`;
+  if (score >= 80) {
+    return { status: "pass", detail: `キャッシュスコア: ${score}点。${browserInfo}` };
+  }
+  const missingHeaders = cache.headers
+    .filter((h) => !h.present)
+    .map((h) => h.name);
+  if (score >= 50) {
+    return {
+      status: "warn",
+      detail: `キャッシュスコア: ${score}点。${browserInfo}${missingHeaders.length > 0 ? `。未設定: ${missingHeaders.join(", ")}` : ""}`,
+    };
+  }
+  return {
+    status: "fail",
+    detail: `キャッシュスコア: ${score}点。${browserInfo}。未設定: ${missingHeaders.join(", ")}`,
+  };
+}
+
+function evalSchemaCompleteness(
+  results: CollectedToolResults,
+): { status: CheckStatus; detail?: string } {
+  const schema = getSchemaData(results);
+  if (!schema) return toolError("構造化データチェッカー");
+  if (schema.summary.totalSchemas === 0) {
+    return { status: "fail", detail: "JSON-LD構造化データが見つかりません" };
+  }
+  const score = schema.summary.score;
+  const types = schema.summary.types.join(", ");
+  if (schema.summary.failCount > 0) {
+    const failedSchemas = schema.schemas
+      .filter((s) => s.status === "fail")
+      .map((s) => `${s.type}（${s.issues.slice(0, 2).join("、")}）`);
+    return {
+      status: "fail",
+      detail: `スキーマスコア: ${score}点。${schema.summary.totalSchemas}件中${schema.summary.failCount}件不合格: ${failedSchemas.slice(0, 2).join("、")}`,
+    };
+  }
+  if (schema.summary.warnCount > 0) {
+    return {
+      status: "warn",
+      detail: `スキーマスコア: ${score}点。${schema.summary.totalSchemas}件検出（${types}）、${schema.summary.warnCount}件に推奨プロパティ不足`,
+    };
+  }
+  return {
+    status: "pass",
+    detail: `スキーマスコア: ${score}点。${schema.summary.totalSchemas}件検出: ${types}`,
+  };
+}
+
+function evalRedirectChain(
+  results: CollectedToolResults,
+): { status: CheckStatus; detail?: string } {
+  const redirect = getRedirectData(results);
+  if (!redirect) return toolError("リダイレクトチェッカー");
+  if (redirect.summary.hasLoop) {
+    return { status: "fail", detail: "リダイレクトループが検出されました" };
+  }
+  if (redirect.summary.hasHttpDowngrade) {
+    return { status: "fail", detail: "HTTPS→HTTPダウングレードが検出されました" };
+  }
+  if (redirect.summary.finalStatus >= 400) {
+    return {
+      status: "fail",
+      detail: `最終ステータス: ${redirect.summary.finalStatus}（${redirect.summary.finalUrl}）`,
+    };
+  }
+  const hops = redirect.summary.totalHops;
+  if (hops === 0) {
+    return { status: "pass", detail: "リダイレクトなし（直接アクセス可能）" };
+  }
+  if (hops <= 1) {
+    return {
+      status: "pass",
+      detail: `${hops}回リダイレクト → ${redirect.summary.finalUrl}`,
+    };
+  }
+  if (hops <= 3) {
+    return {
+      status: "warn",
+      detail: `${hops}回リダイレクト（推奨: 1回以下） → ${redirect.summary.finalUrl}`,
+    };
+  }
+  return {
+    status: "fail",
+    detail: `${hops}回リダイレクト（過剰、4回以上） → ${redirect.summary.finalUrl}`,
+  };
+}
+
+function evalImageOptimization(
+  results: CollectedToolResults,
+): { status: CheckStatus; detail?: string } {
+  const img = getImageData(results);
+  if (!img) return toolError("画像最適化チェッカー");
+  if (img.summary.totalImages === 0) {
+    return { status: "pass", detail: "画像なし" };
+  }
+  const score = img.summary.score;
+  const nextGenPct = Math.round(img.summary.nextGenRate * 100);
+  const lazyPct = Math.round(img.summary.lazyRate * 100);
+  if (img.summary.failCount > 0) {
+    const failImages = img.images
+      .filter((i) => i.status === "fail")
+      .slice(0, 3)
+      .map((i) => `${i.src}（${i.issues.join("、")}）`);
+    return {
+      status: "fail",
+      detail: `画像スコア: ${score}点。${img.summary.failCount}件に問題: ${failImages.join("、")}${img.summary.failCount > 3 ? ` 他${img.summary.failCount - 3}件` : ""}。次世代フォーマット率: ${nextGenPct}%`,
+    };
+  }
+  if (img.summary.warnCount > 0) {
+    return {
+      status: "warn",
+      detail: `画像スコア: ${score}点。${img.summary.totalImages}画像中${img.summary.warnCount}件に改善余地。次世代フォーマット率: ${nextGenPct}%、lazy loading率: ${lazyPct}%`,
+    };
+  }
+  return {
+    status: "pass",
+    detail: `画像スコア: ${score}点。全${img.summary.totalImages}画像が最適化済み。次世代フォーマット率: ${nextGenPct}%、lazy loading率: ${lazyPct}%`,
+  };
+}
+
 // ---- SEO Audit Checklist ----
 
 export const seoAuditChecklist: CheckItemDefinition[] = [
@@ -676,6 +830,46 @@ export const seoAuditChecklist: CheckItemDefinition[] = [
     autoVerifiable: true,
     tier1Tool: "links",
     evaluate: evalNoBrokenLinks,
+  },
+  // Phase 3.5: キャッシュ・圧縮
+  {
+    id: "seo-cache-headers",
+    category: "パフォーマンス",
+    label: "HTTPキャッシュヘッダーが適切に設定されているか",
+    weight: 5,
+    autoVerifiable: true,
+    tier1Tool: "cache",
+    evaluate: evalCacheHeaders,
+  },
+  // Phase 3.5: 構造化データ完全性
+  {
+    id: "seo-schema-completeness",
+    category: "構造化データ",
+    label: "JSON-LDスキーマの必須・推奨プロパティが充足しているか",
+    weight: 8,
+    autoVerifiable: true,
+    tier1Tool: "schema",
+    evaluate: evalSchemaCompleteness,
+  },
+  // Phase 3.5: リダイレクト
+  {
+    id: "seo-redirect-chain",
+    category: "クローラビリティ",
+    label: "リダイレクトチェーンが1ホップ以下か",
+    weight: 5,
+    autoVerifiable: true,
+    tier1Tool: "redirect",
+    evaluate: evalRedirectChain,
+  },
+  // Phase 3.5: 画像最適化
+  {
+    id: "seo-image-optimization",
+    category: "パフォーマンス",
+    label: "画像がWebP/AVIF等の次世代フォーマットで最適化されているか",
+    weight: 8,
+    autoVerifiable: true,
+    tier1Tool: "image",
+    evaluate: evalImageOptimization,
   },
 ];
 
@@ -847,6 +1041,46 @@ export const webLaunchAuditChecklist: CheckItemDefinition[] = [
     tier1Tool: "securityHeaders",
     evaluate: evalSecurityHeaders,
   },
+  // Phase 3.5: キャッシュ
+  {
+    id: "wl-cache-headers",
+    category: "パフォーマンス",
+    label: "HTTPキャッシュヘッダーが設定されているか",
+    weight: 5,
+    autoVerifiable: true,
+    tier1Tool: "cache",
+    evaluate: evalCacheHeaders,
+  },
+  // Phase 3.5: 構造化データ完全性
+  {
+    id: "wl-schema-completeness",
+    category: "SEO",
+    label: "JSON-LDスキーマの必須・推奨プロパティが充足しているか",
+    weight: 5,
+    autoVerifiable: true,
+    tier1Tool: "schema",
+    evaluate: evalSchemaCompleteness,
+  },
+  // Phase 3.5: 画像最適化
+  {
+    id: "wl-image-optimization",
+    category: "品質",
+    label: "画像が適切なフォーマット・サイズで最適化されているか",
+    weight: 5,
+    autoVerifiable: true,
+    tier1Tool: "image",
+    evaluate: evalImageOptimization,
+  },
+  // Phase 3.5: リダイレクト
+  {
+    id: "wl-redirect-chain",
+    category: "品質",
+    label: "不要なリダイレクトチェーンがないか",
+    weight: 5,
+    autoVerifiable: true,
+    tier1Tool: "redirect",
+    evaluate: evalRedirectChain,
+  },
 ];
 
 // ---- Freelance Delivery Audit Checklist ----
@@ -966,5 +1200,25 @@ export const freelanceDeliveryAuditChecklist: CheckItemDefinition[] = [
     autoVerifiable: true,
     tier1Tool: "securityHeaders",
     evaluate: evalSecurityHeaders,
+  },
+  // Phase 3.5: 画像最適化
+  {
+    id: "fl-image-optimization",
+    category: "品質確認",
+    label: "画像が適切なフォーマットで最適化されているか",
+    weight: 5,
+    autoVerifiable: true,
+    tier1Tool: "image",
+    evaluate: evalImageOptimization,
+  },
+  // Phase 3.5: リダイレクト
+  {
+    id: "fl-redirect-chain",
+    category: "品質確認",
+    label: "不要なリダイレクトがないか",
+    weight: 3,
+    autoVerifiable: true,
+    tier1Tool: "redirect",
+    evaluate: evalRedirectChain,
   },
 ];
